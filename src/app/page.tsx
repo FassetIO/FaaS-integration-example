@@ -40,6 +40,13 @@ type TransactionItem = {
   updatedAt: string;
 };
 
+type WebhookEvent = {
+  id: string;
+  receivedAt: string;
+  headers: Record<string, string | string[] | undefined>;
+  body: unknown;
+};
+
 async function safeJson(response: Response) {
   try {
     return (await response.json()) as JsonValue;
@@ -75,6 +82,8 @@ export default function Home() {
   const [eventLog, setEventLog] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [webhooks, setWebhooks] = useState<WebhookEvent[]>([]);
+  const [webhookPolling, setWebhookPolling] = useState(false);
 
   const selectedUser = useMemo(
     () => partnerUsers.find((user) => user.id === selectedPartnerUserId) || null,
@@ -311,6 +320,69 @@ export default function Home() {
     setEventLog((logs) => ["Widget session generated", ...logs].slice(0, 15));
   }
 
+  async function loadWebhooks() {
+    try {
+      const response = await fetch("/api/poc/webhooks");
+      const parsed = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(
+          typeof parsed === "object" && parsed && "message" in parsed
+            ? String((parsed as { message?: string }).message)
+            : "Request failed",
+        );
+      }
+
+      const loaded =
+        typeof parsed === "object" && parsed && "data" in parsed && Array.isArray(parsed.data)
+          ? (parsed.data as WebhookEvent[])
+          : [];
+
+      setWebhooks(loaded);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("Failed to load webhooks:", message);
+    }
+  }
+
+  useEffect(() => {
+    if (!webhookPolling) return;
+
+    loadWebhooks();
+    const interval = setInterval(loadWebhooks, 3000);
+    return () => clearInterval(interval);
+  }, [webhookPolling]);
+
+  async function simulateWebhook() {
+    await runRequest(async () => {
+      const samplePayload = {
+        eventType: "test_webhook",
+        timestamp: new Date().toISOString(),
+        data: {
+          userId: selectedPartnerUserId || "test_user",
+          action: "test_simulation",
+        },
+      };
+
+      const response = await fetch("/api/poc/webhooks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(samplePayload),
+      });
+
+      const parsed = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(
+          typeof parsed === "object" && parsed && "message" in parsed
+            ? String((parsed as { message?: string }).message)
+            : "Request failed",
+        );
+      }
+
+      await loadWebhooks();
+      return parsed;
+    });
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-8">
@@ -380,6 +452,63 @@ export default function Home() {
             {selectedUser ? (
               <p className="mt-3 text-xs text-slate-300">Selected: {selectedUser.userIdFromPartner}</p>
             ) : null}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-700 bg-slate-900/70 p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">6. Webhooks</h2>
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={webhookPolling}
+                onChange={(e) => setWebhookPolling(e.target.checked)}
+                className="rounded"
+              />
+              Auto-poll
+            </label>
+          </div>
+
+          <div className="mt-4 flex gap-3">
+            <button
+              className="rounded-md bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-400 disabled:opacity-50"
+              onClick={loadWebhooks}
+              disabled={loading}
+            >
+              Refresh Webhooks
+            </button>
+            <button
+              className="rounded-md bg-lime-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-lime-400 disabled:opacity-50"
+              onClick={simulateWebhook}
+              disabled={loading}
+            >
+              Simulate Webhook
+            </button>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-slate-200">Received Webhooks ({webhooks.length})</h3>
+            <ul className="mt-2 max-h-64 space-y-2 overflow-auto">
+              {webhooks.length === 0 ? (
+                <li className="text-xs text-slate-400">No webhooks received yet.</li>
+              ) : (
+                webhooks.map((webhook) => {
+                  const headerSummary = Object.keys(webhook.headers).slice(0, 3).join(", ");
+                  const bodyStr = JSON.stringify(webhook.body);
+                  const truncated = bodyStr.length > 200 ? bodyStr.substring(0, 200) + "..." : bodyStr;
+
+                  return (
+                    <li key={webhook.id} className="rounded border border-slate-700 bg-slate-950 p-3 text-xs">
+                      <p className="text-slate-300">
+                        <span className="font-semibold">{new Date(webhook.receivedAt).toLocaleString()}</span>
+                      </p>
+                      <p className="mt-1 text-slate-400">Headers: {headerSummary}</p>
+                      <p className="mt-1 break-all text-slate-400">Body: {truncated}</p>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
           </div>
         </section>
 

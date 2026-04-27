@@ -11,6 +11,7 @@ This webapp validates the following in a single manual-testing dashboard:
 - Generate embed token (`POST /partners/embed-token`)
 - Compute wallet hash (HMAC-SHA256)
 - Embed and configure widget via iframe + `postMessage`
+- Receive and inspect webhooks in the dashboard
 
 ## Project Structure
 
@@ -20,6 +21,8 @@ This webapp validates the following in a single manual-testing dashboard:
 - `src/app/api/poc/wallets/route.ts`: wallets proxy.
 - `src/app/api/poc/transactions/route.ts`: transactions proxy.
 - `src/app/api/poc/widget-session/route.ts`: token + wallet hash session endpoint.
+- `src/app/api/poc/webhooks/route.ts`: webhook receiver and webhook list endpoint.
+- `src/lib/webhooks-store.ts`: local file-backed webhook store used by the dashboard.
 - `src/app/page.tsx`: manual testing dashboard + embedded widget.
 
 ## Setup
@@ -76,9 +79,50 @@ The frontend:
    - `Received message: WIDGET_READY`
    - `Sent WIDGET_CONFIG payload`
 6. Validate widget renders and displays user wallets.
+7. Send a webhook to `/api/poc/webhooks` and confirm it appears in the Webhooks panel.
+
+## Webhook Monitoring
+
+The dashboard now includes a Webhooks section that polls the local webhook store and shows received payloads.
+
+### Local Webhook Receiver
+
+The app exposes a webhook endpoint at:
+
+```bash
+/api/poc/webhooks
+```
+
+Use this endpoint as the target for your ngrok URL, for example:
+
+```bash
+https://your-ngrok-subdomain.ngrok.app/api/poc/webhooks
+```
+
+### ngrok Setup
+
+1. Start the local app on port 3000.
+2. Start ngrok:
+
+```bash
+ngrok http 3000
+```
+
+3. Copy the HTTPS forwarding URL from ngrok.
+4. Configure Fasset webhooks to point to the ngrok URL plus `/api/poc/webhooks`.
+5. Open the dashboard and use the Webhooks panel to verify incoming deliveries.
+
+### What the Dashboard Shows
+
+- Received time
+- Request headers summary
+- Raw webhook body preview
+- Auto-poll option for live monitoring
+- Manual webhook simulation for local testing
 
 ## Notes
 
 - API keys and wallet hash keys are never exposed to client code.
 - Error responses from Fasset are forwarded with original status codes where available.
 - Embed tokens are one-time use and short-lived; generate a new session per load.
+- Webhooks are stored locally in `data/webhooks.json` for this POC.
