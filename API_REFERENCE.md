@@ -35,7 +35,7 @@ These are **not interchangeable**. Each endpoint specifies which one to use.
 
 ## Authentication
 
-FaaS uses **API Key authentication** for server-to-server requests and **Embed Tokens** for client-side widget integration.
+FaaS uses **API Key authentication** for server-to-server requests, **Embed Tokens** & **Wallet Hash** for client-side widget integration.
 
 ### API Key
 
@@ -46,8 +46,7 @@ X-API-KEY: your_api_key_here
 ```
 
 **To obtain an API Key:**
-1. Log in to the Fasset Partner Dashboard at <https://dev-faas-fe.fasset.tech>
-   using the credentials provided by your Fasset contact person.
+1. Log in to the Fasset Partner Dashboard at <https://dev-faas-fe.fasset.tech> using the credentials provided by your Fasset contact person.
 2. Navigate to **Settings → API Keys**.
 3. Generate a new API key.
 4. Store it securely — it is shown only once.
@@ -59,8 +58,7 @@ X-API-KEY: your_api_key_here
 Widget integration requires a **Wallet Hash Secret Key**, used server-side to compute an HMAC-SHA256 digest over the user's wallet list. The widget verifies this digest on load to ensure the wallet data has not been tampered with by the client.
 
 **To obtain the Wallet Hash Secret Key:**
-1. Log in to the Fasset Partner Dashboard at <https://dev-faas-fe.fasset.tech>
-   using the credentials provided by your Fasset contact person.
+1. Log in to the Fasset Partner Dashboard at <https://dev-faas-fe.fasset.tech> using the credentials provided by your Fasset contact person.
 2. Click on the **Generate Secret Key** button.
 3. Copy and store the key securely — **it is shown only once and cannot be retrieved again**.
 4. If the key is lost or compromised, generate a new one. This invalidates the previous key and any widget sessions relying on it.
@@ -439,7 +437,7 @@ Call `POST /partners/embed-token` server-side. See [Generate Embed Token](#4-gen
 
 #### Step 2: Compute Wallet Hash
 
-The widget verifies that the wallet list rendered to the user matches exactly what the partner's backend fetched. Compute this hash server-side using the Wallet Hash Secret Key.
+The widget verifies that the wallet list rendered to the user matches exactly what the partner's backend fetched. Compute this hash server-side using the Wallet Hash Secret Key:
 
 1. Call `GET /partners/get-partner-user-wallets` to fetch the user's current wallets.
 2. Canonicalize the wallets array (algorithm below).
@@ -449,9 +447,9 @@ The hash MUST be byte-exact across implementations, so partners reimplementing t
 
 **Algorithm**
 
-1. **Whitelist fields.** For each wallet, keep only `address`, `chain`, `id`, and `name`. Drop everything else (`fireblocksId`, `totalBalance`, `availableBalance`, etc.) — extra fields will change the hash. `totalBalance` and `availableBalance` in particular change with every deposit/withdrawal and would cause spurious mismatches.
+1. **Whitelist fields.** For each wallet, keep only `address`, `chain`, `id`, and `name`. Drop everything else (`totalBalance`, `availableBalance`, etc.) — extra fields will change the hash. `totalBalance` and `availableBalance` in particular change with every deposit/withdrawal and would cause spurious mismatches.
 2. **Order fields alphabetically inside each object**: `address`, `chain`, `id`, `name`. JSON serialization preserves insertion order, so this ordering is part of the protocol.
-3. **Sort wallets by `id` ascending** using natural/numeric collation, so `"2"` sorts before `"10"`, not after. In JavaScript: `localeCompare(b, undefined, { numeric: true })`. In other languages, sort by integer value when all ids parse as integers; otherwise apply a natural-sort algorithm.
+3. **Sort wallets by id ascending in lexicographic (string) order.** In JavaScript: localeCompare with default options, e.g. String(a.id).localeCompare(String(b.id)). Do not use numeric or “natural” sort unless the server does; byte-for-byte, the sorted order must match the server.
 4. **Serialize as compact JSON**: no whitespace, no trailing newline, double-quoted strings, UTF-8 encoded. (`JSON.stringify(value)` with no spacing argument in JS.)
 5. **HMAC-SHA256** over the UTF-8 bytes of the canonical string, keyed with the Wallet Hash Secret Key. Output as **lowercase hex** (no `0x` prefix, 64 characters).
 
@@ -463,12 +461,11 @@ Input wallets:
 
 ```json
 [
-  { "id": "2",  "name": "ETH Wallet",  "fireblocksId": "fb_002", "address": "0xabc0000000000000000000000000000000000002", "chain": "ETH",     "totalBalance": "1.5",   "availableBalance": "1.5"   },
-  { "id": "10", "name": "USDC Wallet", "fireblocksId": "fb_010", "address": "0xabc0000000000000000000000000000000000010", "chain": "POLYGON", "totalBalance": "250.0", "availableBalance": "200.0" },
-  { "id": "1",  "name": "BTC Wallet",  "fireblocksId": "fb_001", "address": "bc1qexampleexampleexampleexampleexampleexample", "chain": "BTC",     "totalBalance": "0.05",  "availableBalance": "0.05"  }
+  { "id": "2", "name": "ETH Wallet", "address": "0xabc0000000000000000000000000000000000002", "chain": "ETH", "totalBalance": "1.5", "availableBalance": "1.5"   },
+  { "id": "10", "name": "USDC Wallet", "address": "0xabc0000000000000000000000000000000000010", "chain": "POLYGON", "totalBalance": "250.0", "availableBalance": "200.0" },
+  { "id": "1", "name": "BTC Wallet", "address": "bc1qexampleexampleexampleexampleexampleexample", "chain": "BTC", "totalBalance": "0.05", "availableBalance": "0.05"  }
 ]
 ```
-
 Wallet hash key: `example_hash_key_do_not_use_in_production`
 
 Canonical string (the exact bytes fed into HMAC-SHA256):
@@ -488,7 +485,7 @@ const crypto = require('crypto');
 
 function canonicalizeWallets(wallets) {
   const sorted = [...wallets].sort((a, b) =>
-    String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+    String(a.id).localeCompare(String(b.id))
   );
   const normalized = sorted.map((w) => ({
     address: w.address,
@@ -509,10 +506,8 @@ function computeWalletHash(wallets, hashKey) {
 
 <details>
 <summary>Reference port — Python 3</summary>
-
 ```python
 import hmac, hashlib, json
-
 def wallet_hash(wallets, hash_key):
     sorted_wallets = sorted(
         wallets,
@@ -529,12 +524,10 @@ def wallet_hash(wallets, hash_key):
         hashlib.sha256,
     ).hexdigest()
 ```
-
 </details>
 
 <details>
 <summary>Reference port — Go</summary>
-
 ```go
 import (
     "crypto/hmac"
@@ -544,14 +537,12 @@ import (
     "sort"
     "strconv"
 )
-
 type Wallet struct {
     Address string `json:"address"`
     Chain   string `json:"chain"`
     ID      string `json:"id"`
     Name    string `json:"name"`
 }
-
 func WalletHash(wallets []Wallet, hashKey string) (string, error) {
     sort.SliceStable(wallets, func(i, j int) bool {
         ai, aerr := strconv.Atoi(wallets[i].ID)
@@ -570,9 +561,7 @@ func WalletHash(wallets []Wallet, hashKey string) (string, error) {
     return hex.EncodeToString(mac.Sum(nil)), nil
 }
 ```
-
 In Go the struct field order (with JSON tags) defines serialization order, so the `Wallet` struct above is already alphabetical. Strip any non-whitelist fields before calling.
-
 </details>
 
 > Keep the hash key on the backend. Never expose it in client-side code.
@@ -584,7 +573,7 @@ Load the widget in an iframe, then pass authentication via `postMessage`.
 **Widget URL**
 
 ```
-https://sb-connect.fasset.tech
+https://dev-sb-connect.fasset.tech
 ```
 
 **`WIDGET_CONFIG` payload (sent via `postMessage`)**
@@ -757,7 +746,7 @@ app.post('/api/fasset/widget-session', async (req, res) => {
   res.json({
     token: tokenResp.data.token,
     walletHash,
-    widgetUrl: 'https://sb-connect.fasset.tech',
+    widgetUrl: 'https://dev-sb-connect.fasset.tech',
   });
 });
 ```
