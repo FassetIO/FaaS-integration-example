@@ -1,6 +1,6 @@
-# Fasset Integration POC Guide
+# Fasset Integration Guide
 
-## What This POC Covers
+## What This Example Covers
 
 This webapp validates the following in a single manual-testing dashboard:
 
@@ -17,11 +17,11 @@ This webapp validates the following in a single manual-testing dashboard:
 
 - `src/lib/fasset.ts`: typed Fasset API client and config.
 - `src/lib/wallet-hash.ts`: canonicalization + HMAC wallet hash logic.
-- `src/app/api/poc/users/route.ts`: user create/list proxy.
-- `src/app/api/poc/wallets/route.ts`: wallets proxy.
-- `src/app/api/poc/transactions/route.ts`: transactions proxy.
-- `src/app/api/poc/widget-session/route.ts`: token + wallet hash session endpoint.
-- `src/app/api/poc/webhooks/route.ts`: webhook receiver and webhook list endpoint.
+- `src/app/api/fasset/users/route.ts`: user create/list proxy.
+- `src/app/api/fasset/wallets/route.ts`: wallets proxy.
+- `src/app/api/fasset/transactions/route.ts`: transactions proxy.
+- `src/app/api/fasset/widget-session/route.ts`: token + wallet hash session endpoint.
+- `src/app/api/fasset/webhooks/route.ts`: webhook receiver and webhook list endpoint.
 - `src/lib/webhooks-store.ts`: local file-backed webhook store used by the dashboard.
 - `src/app/page.tsx`: manual testing dashboard + embedded widget.
 
@@ -41,8 +41,8 @@ cp .env.example .env.local
 
 Required variables:
 
-- `FASSET_API_KEY`: partner API key from dashboard.
-- `FASSET_WALLET_HASH_KEY`: wallet hash secret key from dashboard.
+- `FASSET_API_KEY`: partner API key. Generate from the Fasset Partner Dashboard at <https://dev-faas-fe.fasset.tech>.
+- `FASSET_WALLET_HASH_KEY`: wallet hash secret key. Generate from the same dashboard. Shown only once — store securely.
 - `FASSET_API_BASE_URL`: defaults to dev URL.
 - `FASSET_WIDGET_URL`: defaults to `https://sb-connect.fasset.tech`.
 
@@ -56,7 +56,7 @@ Open `http://localhost:3000`.
 
 ## How Widget Session Works
 
-`POST /api/poc/widget-session` does this server-side:
+`POST /api/fasset/widget-session` does this server-side:
 
 1. Generates one-time embed token from Fasset.
 2. Fetches user wallets from Fasset.
@@ -69,6 +69,16 @@ The frontend:
 2. Waits for `WIDGET_READY` from widget origin.
 3. Sends `WIDGET_CONFIG` with `token`, `walletHash`, and `theme`.
 
+## Wallet Hash
+
+The widget verifies wallet ownership by checking an HMAC-SHA256 hash the partner
+computes server-side. This example's reference implementation lives in
+[src/lib/wallet-hash.ts](src/lib/wallet-hash.ts).
+
+The hash MUST be byte-exact across language ports. For the protocol spec —
+algorithm, byte-exact worked example, and reference ports for Python and Go —
+see [API_REFERENCE.md → Step 2: Compute Wallet Hash](API_REFERENCE.md#step-2-compute-wallet-hash).
+
 ## Manual Validation Flow
 
 1. Create a user in the "Create Partner User" section.
@@ -79,7 +89,7 @@ The frontend:
    - `Received message: WIDGET_READY`
    - `Sent WIDGET_CONFIG payload`
 6. Validate widget renders and displays user wallets.
-7. Send a webhook to `/api/poc/webhooks` and confirm it appears in the Webhooks panel.
+7. Send a webhook to `/api/fasset/webhooks` and confirm it appears in the Webhooks panel.
 
 ## Webhook Monitoring
 
@@ -90,13 +100,13 @@ The dashboard now includes a Webhooks section that polls the local webhook store
 The app exposes a webhook endpoint at:
 
 ```bash
-/api/poc/webhooks
+/api/fasset/webhooks
 ```
 
 Use this endpoint as the target for your ngrok URL, for example:
 
 ```bash
-https://your-ngrok-subdomain.ngrok.app/api/poc/webhooks
+https://your-ngrok-subdomain.ngrok.app/api/fasset/webhooks
 ```
 
 ### ngrok Setup
@@ -109,7 +119,7 @@ ngrok http 3000
 ```
 
 3. Copy the HTTPS forwarding URL from ngrok.
-4. Configure Fasset webhooks to point to the ngrok URL plus `/api/poc/webhooks`.
+4. Configure Fasset webhooks to point to the ngrok URL plus `/api/fasset/webhooks`.
 5. Open the dashboard and use the Webhooks panel to verify incoming deliveries.
 
 ### What the Dashboard Shows
@@ -125,4 +135,4 @@ ngrok http 3000
 - API keys and wallet hash keys are never exposed to client code.
 - Error responses from Fasset are forwarded with original status codes where available.
 - Embed tokens are one-time use and short-lived; generate a new session per load.
-- Webhooks are stored locally in `data/webhooks.json` for this POC.
+- Webhooks are stored locally in `data/webhooks.json` for inspection in this example.

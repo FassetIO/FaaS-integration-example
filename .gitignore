@@ -22,7 +22,20 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+*.swp
+*~
+
+# editor / IDE
+.idea/
+.vscode/
+
+# claude code / ai tooling
+.claude/
+
+# runtime data (locally stored webhooks etc.)
+/data/*.json
 
 # debug
 npm-debug.log*

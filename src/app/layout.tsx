@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Fasset Integration POC",
-  description: "Manual API and widget validation dashboard for Fasset integration",
+  title: "Fasset Integration Example",
+  description: "Reference dashboard for integrating the Fasset API and embeddable widget",
 };
 
 export default function RootLayout({
