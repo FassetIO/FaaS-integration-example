@@ -81,7 +81,7 @@ type CanonicalWallet = {
  */
 export function canonicalizeWallets(wallets: FassetWallet[]): string {
   const sorted = [...wallets].sort((a, b) =>
-    String(a.id).localeCompare(String(b.id), undefined, { numeric: true }),
+    String(a.id).localeCompare(String(b.id), undefined),
   );
 
   const normalized: CanonicalWallet[] = sorted.map((wallet) => ({
