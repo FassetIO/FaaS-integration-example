@@ -51,10 +51,9 @@ Widget integration requires a **Wallet Hash Secret Key**, used server-side to co
 
 **To obtain the Wallet Hash Secret Key:**
 1. Log in to the Fasset Partner Dashboard.
-2. Navigate to **Settings → API Keys**.
-3. Click **Generate Wallet Hash Secret**.
-4. Copy and store the key securely — **it is shown only once and cannot be retrieved again**.
-5. If the key is lost or compromised, generate a new one. This invalidates the previous key and any widget sessions relying on it.
+2. Click on the **Generate Secret Key** button.
+3. Copy and store the key securely — **it is shown only once and cannot be retrieved again**.
+4. If the key is lost or compromised, generate a new one. This invalidates the previous key and any widget sessions relying on it.
 
 Each partner has exactly one active Wallet Hash Secret at a time. See [Compute Wallet Hash](#step-2-compute-wallet-hash) for usage.
 
@@ -384,7 +383,6 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/partners/get-partn
       {
         "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         "name": "USDT",
-        "fireblocksId": "fireblocks-vault-123",
         "address": "0xAbCdEf1234567890AbCdEf1234567890AbCdEf12",
         "chain": "ETH",
         "totalBalance": "250.50",
@@ -403,7 +401,6 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/partners/get-partn
 | `partnerUserId` | string | The `partnerUserId` whose wallets are returned |
 | `wallets[].id` | string | Unique wallet identifier |
 | `wallets[].name` | string | Token/currency symbol |
-| `wallets[].fireblocksId` | string | Internal Fireblocks vault identifier |
 | `wallets[].address` | string | Blockchain deposit address |
 | `wallets[].chain` | string | Blockchain network identifier |
 | `wallets[].totalBalance` | string | Total balance |
@@ -441,7 +438,7 @@ The widget verifies that the wallet list rendered to the user matches exactly wh
 **Canonicalization algorithm**
 
 1. Sort the wallets array ascending by `id` (numeric-aware string compare).
-2. For each wallet, keep **only** these fields, in this exact key order: `address`, `chain`, `fireblocksId`, `id`, `name`.
+2. For each wallet, keep **only** these fields, in this exact key order: `address`, `chain`, `id`, `name`.
 3. Omit `totalBalance` and `availableBalance` — they change with every deposit/withdrawal and would cause spurious mismatches.
 4. `JSON.stringify` the resulting array with default (no-space) formatting.
 
@@ -452,12 +449,11 @@ const crypto = require('crypto');
 
 function canonicalizeWallets(wallets) {
   const sorted = [...wallets].sort((a, b) =>
-    String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+    String(a.id).localeCompare(String(b.id))
   );
   const normalized = sorted.map((w) => ({
     address: w.address,
     chain: w.chain,
-    fireblocksId: w.fireblocksId,
     id: w.id,
     name: w.name,
   }));

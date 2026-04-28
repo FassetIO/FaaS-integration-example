@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 export type FassetWallet = {
   id: string;
   name: string;
-  fireblocksId: string;
+  fireblocksId?: string;
   address: string;
   chain: string;
   totalBalance?: string;
@@ -13,7 +13,6 @@ export type FassetWallet = {
 type CanonicalWallet = {
   address: string;
   chain: string;
-  fireblocksId: string;
   id: string;
   name: string;
 };
@@ -26,7 +25,6 @@ export function canonicalizeWallets(wallets: FassetWallet[]): string {
   const normalized: CanonicalWallet[] = sorted.map((wallet) => ({
     address: wallet.address,
     chain: wallet.chain,
-    fireblocksId: wallet.fireblocksId,
     id: wallet.id,
     name: wallet.name,
   }));
