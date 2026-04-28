@@ -1,7 +1,7 @@
 import type { FassetWallet } from "@/lib/wallet-hash";
 
 const DEFAULT_BASE_URL = "https://dev-faas.fasset.tech/faas-service/api/v1";
-const DEFAULT_WIDGET_URL = "https://sb-connect.fasset.tech";
+const DEFAULT_WIDGET_URL = "https://dev-sb-connect.fasset.tech";
 
 type FassetApiError = {
   statusCode?: number;
