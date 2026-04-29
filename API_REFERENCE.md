@@ -504,65 +504,68 @@ function computeWalletHash(wallets, hashKey) {
 }
 ```
 
-<details>
-<summary>Reference port — Python 3</summary>
 ```python
-import hmac, hashlib, json
+import hmac
+import hashlib
+import json
+
 def wallet_hash(wallets, hash_key):
+    # Sort purely lexicographically by converting id to string
     sorted_wallets = sorted(
         wallets,
-        key=lambda w: int(w["id"]) if str(w["id"]).isdigit() else w["id"],
+        key=lambda w: str(w["id"])
     )
+    
     normalized = [
         {"address": w["address"], "chain": w["chain"], "id": w["id"], "name": w["name"]}
         for w in sorted_wallets
     ]
+    
+    # separators=(",", ":") ensures no whitespace, matching JS JSON.stringify
     canonical = json.dumps(normalized, separators=(",", ":"), ensure_ascii=False)
+    
     return hmac.new(
         hash_key.encode("utf-8"),
         canonical.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 ```
-</details>
 
-<details>
-<summary>Reference port — Go</summary>
 ```go
 import (
-    "crypto/hmac"
-    "crypto/sha256"
-    "encoding/hex"
-    "encoding/json"
-    "sort"
-    "strconv"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"sort"
 )
+
 type Wallet struct {
-    Address string `json:"address"`
-    Chain   string `json:"chain"`
-    ID      string `json:"id"`
-    Name    string `json:"name"`
+	Address string `json:"address"`
+	Chain   string `json:"chain"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
 }
+
 func WalletHash(wallets []Wallet, hashKey string) (string, error) {
-    sort.SliceStable(wallets, func(i, j int) bool {
-        ai, aerr := strconv.Atoi(wallets[i].ID)
-        bi, berr := strconv.Atoi(wallets[j].ID)
-        if aerr == nil && berr == nil {
-            return ai < bi
-        }
-        return wallets[i].ID < wallets[j].ID
-    })
-    canonical, err := json.Marshal(wallets)
-    if err != nil {
-        return "", err
-    }
-    mac := hmac.New(sha256.New, []byte(hashKey))
-    mac.Write(canonical)
-    return hex.EncodeToString(mac.Sum(nil)), nil
+	// Sort purely by string comparison to match localeCompare
+	sort.SliceStable(wallets, func(i, j int) bool {
+		return wallets[i].ID < wallets[j].ID
+	})
+
+	// json.Marshal in Go produces compact output (no spaces) by default
+	canonical, err := json.Marshal(wallets)
+	if err != nil {
+		return "", err
+	}
+
+	mac := hmac.New(sha256.New, []byte(hashKey))
+	mac.Write(canonical)
+	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 ```
+
 In Go the struct field order (with JSON tags) defines serialization order, so the `Wallet` struct above is already alphabetical. Strip any non-whitelist fields before calling.
-</details>
 
 > Keep the hash key on the backend. Never expose it in client-side code.
 
