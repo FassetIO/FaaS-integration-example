@@ -12,7 +12,7 @@
 
 Fasset as a Service (FaaS) provides a REST API for integrating cryptocurrency wallet management into partner applications.
 
-**Base URL:** `https://dev-faas.fasset.tech/faas-service/api/v1`
+**API Base URL:** `https://dev-faas.fasset.tech/faas-service/api/v1`
 
 **Current Version:** v1.0
 
@@ -899,12 +899,6 @@ Fasset-specific guidance:
 - **Recompute the wallet hash on every widget load.** Wallets can change between sessions; a stale hash will cause the widget to fail verification.
 - **Use `data.transactionHash` as the idempotency key** when processing `transaction.updated` webhooks.
 - **Back off on `429` responses** using exponential backoff before retrying.
-
-### Sandbox
-
-```
-Base URL (Sandbox): https://sandbox.fasset.com/faas-service/api/v1
-```
 
 ---
 
