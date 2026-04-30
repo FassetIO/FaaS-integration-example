@@ -67,6 +67,18 @@ Each partner has exactly one active Wallet Hash Secret at a time. See [Compute W
 
 > Treat the Wallet Hash Secret Key with the same care as the API key. Keep it server-side only.
 
+### Whitelisted Widget Domains
+
+Before loading the Fasset Connect widget in production, add every parent-page origin that will embed it to your partner allowlist. The widget enforces origin whitelisting and rejects requests from unregistered origins.
+
+**To whitelist a widget domain:**
+1. Log in to the Fasset Partner Dashboard at <https://dev-faas-fe.fasset.tech> using the credentials provided by your Fasset contact person.
+2. Navigate to **Developers -> Domains**.
+3. Add the origin that will host the widget, including scheme, host, and port if applicable, for example `https://app.partner.com` or `http://localhost:3000`.
+4. Repeat for each environment that embeds the widget, such as development, staging, and production.
+
+> Whitelist exact origins, not URL paths. For example, use `https://app.partner.com`, not `https://app.partner.com/dashboard`.
+
 ---
 
 ## Rate Limits
@@ -428,6 +440,8 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/partners/get-partn
 ## Widget Integration
 
 The Fasset Connect widget is embedded via an iframe. It displays the user's wallets, deposit addresses, and QR codes.
+
+Before integrating the widget, make sure the page origin that embeds the iframe is added in the Partner Dashboard under **Developers -> Domains**. See [Whitelisted Widget Domains](#whitelisted-widget-domains).
 
 ### Integration Flow
 
