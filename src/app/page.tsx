@@ -14,7 +14,6 @@ type PartnerUser = {
 type Wallet = {
   id: string;
   name: string;
-  fireblocksId: string;
   address: string;
   chain: string;
   totalBalance: string;

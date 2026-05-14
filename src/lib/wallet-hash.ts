@@ -10,7 +10,7 @@ import crypto from "node:crypto";
  * must follow these rules precisely:
  *
  *   1. Field whitelist: include ONLY `address`, `chain`, `id`, `name`.
- *      Drop every other field returned by Fasset (`fireblocksId`, `totalBalance`,
+ *      Drop every other field returned by Fasset (`totalBalance`,
  *      `availableBalance`, etc.) — including extra fields will change the hash.
  *
  *   2. Field order inside each object: alphabetical — `address`, `chain`, `id`, `name`.
@@ -36,9 +36,9 @@ import crypto from "node:crypto";
  * Given the input wallets:
  *
  *   [
- *     { id: "2",  name: "ETH Wallet",  fireblocksId: "fb_002", address: "0xabc0000000000000000000000000000000000002", chain: "ETH",     totalBalance: "1.5",   availableBalance: "1.5"   },
- *     { id: "10", name: "USDC Wallet", fireblocksId: "fb_010", address: "0xabc0000000000000000000000000000000000010", chain: "POLYGON", totalBalance: "250.0", availableBalance: "200.0" },
- *     { id: "1",  name: "BTC Wallet",  fireblocksId: "fb_001", address: "bc1qexampleexampleexampleexampleexampleexample",  chain: "BTC",     totalBalance: "0.05",  availableBalance: "0.05"  },
+ *     { id: "2",  name: "ETH Wallet",  address: "0xabc0000000000000000000000000000000000002", chain: "ETH",     totalBalance: "1.5",   availableBalance: "1.5"   },
+ *     { id: "10", name: "USDC Wallet", address: "0xabc0000000000000000000000000000000000010", chain: "POLYGON", totalBalance: "250.0", availableBalance: "200.0" },
+ *     { id: "1",  name: "BTC Wallet",  address: "bc1qexampleexampleexampleexampleexampleexample",  chain: "BTC",     totalBalance: "0.05",  availableBalance: "0.05"  },
  *   ]
  *
  * The canonical string (after whitelist, field-ordering, natural sort, and compact
@@ -60,7 +60,6 @@ import crypto from "node:crypto";
 export type FassetWallet = {
   id: string;
   name: string;
-  fireblocksId?: string;
   address: string;
   chain: string;
   totalBalance?: string;
