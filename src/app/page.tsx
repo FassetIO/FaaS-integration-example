@@ -531,8 +531,8 @@ export default function Home() {
                   <dt className="w-28 shrink-0 text-[11px] font-medium uppercase tracking-wider text-slate-500">
                     Canonical JSON
                   </dt>
-                  <dd className="break-all text-slate-900 font-mono text-[11px]">
-                    <div className="overflow-x-auto whitespace-nowrap max-w-full">{canonicalizeWallets(widgetSession.wallets || [])}</div>
+                  <dd className="min-w-0 flex-1 text-slate-900 font-mono text-[11px]">
+                    <div className="w-full overflow-x-auto whitespace-nowrap">{canonicalizeWallets(widgetSession.wallets || [])}</div>
                   </dd>
                 </div>
                 <KeyValue label="Wallet Hash" value={widgetSession.walletHash} mono />

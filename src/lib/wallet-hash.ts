@@ -36,23 +36,60 @@ import crypto from "node:crypto";
  * Given the input wallets:
  *
  *   [
- *     { id: "2",  name: "ETH Wallet",  address: "0xabc0000000000000000000000000000000000002", chain: "ETH",     totalBalance: "1.5",   availableBalance: "1.5"   },
- *     { id: "10", name: "USDC Wallet", address: "0xabc0000000000000000000000000000000000010", chain: "POLYGON", totalBalance: "250.0", availableBalance: "200.0" },
- *     { id: "1",  name: "BTC Wallet",  address: "bc1qexampleexampleexampleexampleexampleexample",  chain: "BTC",     totalBalance: "0.05",  availableBalance: "0.05"  },
- *   ]
+ *    {
+ *      "id": "0a672240-66fc-45c7-95b3-ab3ea39469e7",
+ *      "name": "ETH",
+ *      "address": "0x3Af23011B5438CD75FE1dcA85A5C2006b4666584",
+ *      "chain": "SEPOLIA",
+ *      "totalBalance": "0.000000000126882",
+ *      "availableBalance": "0.000000000126882"
+ *    },
+ *    {
+ *      "id": "72cfa64e-699f-45f0-8302-a415a7ca27ab",
+ *      "name": "BTC",
+ *      "address": "tb1qj62qxhq9gjehu6v879562c7ypj3pfvv85gf5cu",
+ *      "chain": "BTC",
+ *      "totalBalance": "0",
+ *      "availableBalance": "0"
+ *    },
+ *    {
+ *      "id": "de0a589b-8f84-4ea2-a8de-21bad60ec39e",
+ *      "name": "USDT",
+ *      "address": "TFLtKgmT1DgYjjxyk3x3c2AX8smQDfpkbn",
+ *      "chain": "TRON",
+ *      "totalBalance": "0",
+ *      "availableBalance": "0"
+ *    },
+ *    {
+ *      "id": "f5e3cdc3-a4a3-4d87-897e-0bc034fdeb64",
+ *      "name": "USDC",
+ *      "address": "0x3Af23011B5438CD75FE1dcA85A5C2006b4666584",
+ *      "chain": "SEPOLIA",
+ *      "totalBalance": "0",
+ *      "availableBalance": "0"
+ *    },
+ *    {
+ *      "id": "f9c11d16-6d0c-489b-8d3b-2673d69534b2",
+ *      "name": "SOL",
+ *      "address": "Cs57acHT9CzTaw2aAb4TEgv3qeR4znsWXGpn2wWkEf1H",
+ *      "chain": "SOL",
+ *      "totalBalance": "0",
+ *      "availableBalance": "0"
+ *    }
+ *  ]
  *
  * The canonical string (after whitelist, field-ordering, natural sort, and compact
  * JSON serialization) is exactly:
  *
- *   [{"address":"bc1qexampleexampleexampleexampleexampleexample","chain":"BTC","id":"1","name":"BTC Wallet"},{"address":"0xabc0000000000000000000000000000000000002","chain":"ETH","id":"2","name":"ETH Wallet"},{"address":"0xabc0000000000000000000000000000000000010","chain":"POLYGON","id":"10","name":"USDC Wallet"}]
+ *   [{"address":"0x3Af23011B5438CD75FE1dcA85A5C2006b4666584","chain":"SEPOLIA","id":"0a672240-66fc-45c7-95b3-ab3ea39469e7","name":"ETH"},{"address":"tb1qj62qxhq9gjehu6v879562c7ypj3pfvv85gf5cu","chain":"BTC","id":"72cfa64e-699f-45f0-8302-a415a7ca27ab","name":"BTC"},{"address":"TFLtKgmT1DgYjjxyk3x3c2AX8smQDfpkbn","chain":"TRON","id":"de0a589b-8f84-4ea2-a8de-21bad60ec39e","name":"USDT"},{"address":"0x3Af23011B5438CD75FE1dcA85A5C2006b4666584","chain":"SEPOLIA","id":"f5e3cdc3-a4a3-4d87-897e-0bc034fdeb64","name":"USDC"},{"address":"Cs57acHT9CzTaw2aAb4TEgv3qeR4znsWXGpn2wWkEf1H","chain":"SOL","id":"f9c11d16-6d0c-489b-8d3b-2673d69534b2","name":"SOL"}]
  *
  * With wallet hash key:
  *
- *   example_hash_key_do_not_use_in_production
+ *   577b3307505fae0e62c6538bab1296d6bfc7fe2feea1e1ff9731ca8f8caa5c68
  *
  * The expected HMAC-SHA256 hex digest is:
  *
- *   05724e8e98364c0301156e6c51237b549a56d4d71badd391b377df4edf11cd12
+ *   56014d82a4f541938e55890ded2303c6d89371a0948a2144ce4b942b4ae7a614
  *
  * Use this fixture to validate any port of the algorithm before going live.
  */
