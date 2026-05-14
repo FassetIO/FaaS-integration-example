@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { canonicalizeWallets } from "@/lib/wallet-hash";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -526,6 +527,14 @@ export default function Home() {
             {widgetSession ? (
               <dl className="mt-5 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs">
                 <KeyValue label="Widget URL" value={widgetSession.widgetUrl} />
+                <div className="flex items-baseline gap-3">
+                  <dt className="w-28 shrink-0 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                    Canonical JSON
+                  </dt>
+                  <dd className="break-all text-slate-900 font-mono text-[11px]">
+                    <div className="overflow-x-auto whitespace-nowrap max-w-full">{canonicalizeWallets(widgetSession.wallets || [])}</div>
+                  </dd>
+                </div>
                 <KeyValue label="Wallet Hash" value={widgetSession.walletHash} mono />
                 <KeyValue label="Wallet Count" value={String(widgetSession.wallets.length)} />
               </dl>
