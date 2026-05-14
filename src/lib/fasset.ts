@@ -112,13 +112,13 @@ export async function createPartnerUser(input: CreateUserInput) {
   );
 }
 
-export async function getPartnerUsers(limit = 20, offset = 0) {
+export async function getPartnerUsers(page = 1, pageSize = 20) {
   const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset),
+    page: String(page),
+    pageSize: String(pageSize),
   });
 
-  return requestFasset<{ partnerUsers: PartnerUser[]; total: number; limit: number; offset: number }>(
+  return requestFasset<{ partnerUsers: PartnerUser[]; total: number; page: number; pageSize: number }>(
     `/partners/get-partner-users?${params.toString()}`,
   );
 }
@@ -139,15 +139,15 @@ export async function getPartnerUserWallets(partnerUserId: string) {
 
 export async function getPartnerUserTransactions(options: {
   userId: string;
-  limit?: number;
-  offset?: number;
+  page?: number;
+  pageSize?: number;
   fromDate?: string;
   toDate?: string;
 }) {
   const params = new URLSearchParams({
     userId: options.userId,
-    limit: String(options.limit ?? 20),
-    offset: String(options.offset ?? 0),
+    page: String(options.page ?? 1),
+    pageSize: String(options.pageSize ?? 20),
   });
 
   if (options.fromDate) {
@@ -157,7 +157,7 @@ export async function getPartnerUserTransactions(options: {
     params.set("toDate", options.toDate);
   }
 
-  return requestFasset<{ data: TransactionItem[]; total: number; limit: number; offset: number }>(
+  return requestFasset<{ data: TransactionItem[]; total: number; page: number; pageSize: number }>(
     `/transactions/get-partner-user-transactions?${params.toString()}`,
   );
 }

@@ -18,6 +18,8 @@ Fasset as a Service (FaaS) provides a REST API for integrating cryptocurrency wa
 
 All requests and responses use JSON. All timestamps are ISO 8601 (UTC).
 
+**List pagination:** Paginated list endpoints use query parameters `page` (1-indexed; default `1`) and `pageSize` (default `20`).
+
 ---
 
 ## User Identifiers
@@ -208,13 +210,13 @@ Returns all users under the partner account.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `limit` | number | No | Number of users to return (default: 20) |
-| `offset` | number | No | Number of users to skip (default: 0) |
+| `page` | number | No | Page number, 1-indexed (default: 1) |
+| `pageSize` | number | No | Number of users per page (default: 20) |
 
 **Example**
 
 ```bash
-curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/partners/get-partner-users?limit=20&offset=0" \
+curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/partners/get-partner-users?page=1&pageSize=20" \
   -H "X-API-KEY: your_api_key_here"
 ```
 
@@ -236,8 +238,8 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/partners/get-partn
       }
     ],
     "total": 128,
-    "limit": 20,
-    "offset": 0
+    "page": 1,
+    "pageSize": 20
   },
   "meta": {}
 }
@@ -252,8 +254,8 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/partners/get-partn
 | `partnerUsers[].createdAt` | string | ISO 8601 creation timestamp |
 | `partnerUsers[].metadata` | object | Custom metadata associated with the user |
 | `total` | number | Total number of partner users |
-| `limit` | number | Limit applied to this response |
-| `offset` | number | Offset applied to this response |
+| `page` | number | Current page number (1-indexed) |
+| `pageSize` | number | Number of items per page |
 
 ---
 
@@ -268,15 +270,15 @@ Returns transactions for a specific partner user.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `userId` | string | Yes | Internal `partnerUserId` (UUID) — see [User Identifiers](#user-identifiers) |
-| `limit` | number | No | Number of transactions to return (default: 20) |
-| `offset` | number | No | Number of transactions to skip (default: 0) |
+| `page` | number | No | Page number, 1-indexed (default: 1) |
+| `pageSize` | number | No | Number of transactions per page (default: 20) |
 | `fromDate` | string | No | Start date filter (ISO 8601, `YYYY-MM-DD`) |
 | `toDate` | string | No | End date filter (ISO 8601, `YYYY-MM-DD`) |
 
 **Example**
 
 ```bash
-curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/transactions/get-partner-user-transactions?userId=09dc741e-f1dd-42a0-a681-af41fafc1dd8&limit=10&offset=0&fromDate=2026-01-01&toDate=2026-01-31" \
+curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/transactions/get-partner-user-transactions?userId=09dc741e-f1dd-42a0-a681-af41fafc1dd8&page=1&pageSize=10&fromDate=2026-01-01&toDate=2026-01-31" \
   -H "X-API-KEY: your_api_key_here"
 ```
 
@@ -299,8 +301,8 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/transactions/get-p
       }
     ],
     "total": 45,
-    "limit": 10,
-    "offset": 0
+    "page": 1,
+    "pageSize": 10
   },
   "meta": {}
 }
@@ -320,8 +322,8 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/transactions/get-p
 | `data[].createdAt` | string | ISO 8601 creation timestamp |
 | `data[].updatedAt` | string | ISO 8601 last-update timestamp |
 | `total` | number | Total number of matching transactions |
-| `limit` | number | Limit applied to this response |
-| `offset` | number | Offset applied to this response |
+| `page` | number | Current page number (1-indexed) |
+| `pageSize` | number | Number of items per page |
 
 **Endpoint-specific errors**
 

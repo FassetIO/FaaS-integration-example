@@ -221,7 +221,7 @@ export default function Home() {
   }
 
   async function loadPartnerUsers() {
-    const body = await runRequest(() => trackedFetch("/api/fasset/users?limit=50&offset=0"));
+    const body = await runRequest(() => trackedFetch("/api/fasset/users?page=1&pageSize=50"));
 
     const users =
       typeof body === "object" &&
@@ -272,7 +272,7 @@ export default function Home() {
 
     const body = await runRequest(() =>
       trackedFetch(
-        `/api/fasset/transactions?userId=${encodeURIComponent(selectedPartnerUserId)}&limit=20&offset=0`,
+        `/api/fasset/transactions?userId=${encodeURIComponent(selectedPartnerUserId)}&page=1&pageSize=20`,
       ),
     );
 

@@ -3,10 +3,10 @@ import { createPartnerUser, FassetRequestError, getPartnerUsers } from "@/lib/fa
 
 export async function GET(request: NextRequest) {
   try {
-    const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20");
-    const offset = Number(request.nextUrl.searchParams.get("offset") ?? "0");
+    const page = Number(request.nextUrl.searchParams.get("page") ?? "1");
+    const pageSize = Number(request.nextUrl.searchParams.get("pageSize") ?? "20");
 
-    const result = await getPartnerUsers(limit, offset);
+    const result = await getPartnerUsers(page, pageSize);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

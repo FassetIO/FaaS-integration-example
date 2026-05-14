@@ -8,12 +8,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "userId query parameter is required" }, { status: 400 });
     }
 
-    const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20");
-    const offset = Number(request.nextUrl.searchParams.get("offset") ?? "0");
+    const page = Number(request.nextUrl.searchParams.get("page") ?? "1");
+    const pageSize = Number(request.nextUrl.searchParams.get("pageSize") ?? "20");
     const fromDate = request.nextUrl.searchParams.get("fromDate") || undefined;
     const toDate = request.nextUrl.searchParams.get("toDate") || undefined;
 
-    const result = await getPartnerUserTransactions({ userId, limit, offset, fromDate, toDate });
+    const result = await getPartnerUserTransactions({ userId, page, pageSize, fromDate, toDate });
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
