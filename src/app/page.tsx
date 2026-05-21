@@ -93,6 +93,7 @@ export default function Home() {
 
   const [widgetSession, setWidgetSession] = useState<WidgetSession | null>(null);
   const [widgetTheme, setWidgetTheme] = useState<"light" | "dark">("dark");
+  const [iframeKey, setIframeKey] = useState<string | null>(null);
 
   const [requestLog, setRequestLog] = useState<RequestRecord[] | null>(null);
   const [responseLog, setResponseLog] = useState<JsonValue | null>(null);
@@ -329,6 +330,9 @@ export default function Home() {
         ? (body.data as WidgetSession)
         : null;
 
+    // Force remount of iframe by assigning a fresh key so the iframe is
+    // unmounted and recreated, ensuring the widget loads fresh each time.
+    setIframeKey(`${session?.token ?? ""}-${Date.now()}`);
     setWidgetSession(session);
     setEventLog((logs) => ["Widget session generated", ...logs].slice(0, 15));
   }
@@ -573,6 +577,7 @@ export default function Home() {
             ) : (
               <div className="space-y-4">
                 <iframe
+                  key={iframeKey ?? widgetSession.widgetUrl}
                   ref={iframeRef}
                   title="Fasset Widget"
                   src={widgetSession.widgetUrl}
