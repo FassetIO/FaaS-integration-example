@@ -179,7 +179,7 @@ export type OrderOutput = {
 };
 
 export async function createOrder(input: CreateOrderInput) {
-  return requestFasset<{ order: OrderOutput }>("/orders", {
+  return requestFasset<OrderOutput>("/orders", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -190,7 +190,7 @@ export async function getOrder(options: { orderId?: string; externalOrderRef?: s
   if (options.orderId) params.set("orderId", options.orderId);
   if (options.externalOrderRef) params.set("externalOrderRef", options.externalOrderRef);
 
-  return requestFasset<{ order: OrderOutput }>(`/orders?${params.toString()}`);
+  return requestFasset<OrderOutput>(`/orders?${params.toString()}`);
 }
 
 export async function getPartnerUserWallets(partnerUserId: string) {

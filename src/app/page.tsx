@@ -103,7 +103,7 @@ export default function Home() {
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
 
   const [widgetSession, setWidgetSession] = useState<WidgetSession | null>(null);
-  const [widgetTheme, setWidgetTheme] = useState<"light" | "dark">("dark");
+  const [widgetTheme, setWidgetTheme] = useState<"light" | "dark">("light");
 
   function genHex(len: number) {
     try {
@@ -120,7 +120,9 @@ export default function Home() {
   const [orderFiatCurrency, setOrderFiatCurrency] = useState("USD");
   const [orderRemarks, setOrderRemarks] = useState("");
   const [orderExpiresAt, setOrderExpiresAt] = useState("");
-  const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
+  const [orderLookupMode, setOrderLookupMode] = useState<"orderId" | "externalOrderRef">("externalOrderRef");
+  const [orderLookupValue, setOrderLookupValue] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [iframeKey, setIframeKey] = useState<string | null>(null);
 
   const [requestLog, setRequestLog] = useState<RequestRecord[] | null>(null);
@@ -130,6 +132,15 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [webhooks, setWebhooks] = useState<WebhookEvent[]>([]);
   const [webhookPolling, setWebhookPolling] = useState(false);
+
+  const selectClass = `${inputClass} appearance-none pr-14`;
+  const selectStyle = {
+    backgroundImage:
+      "url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 20 20%22 fill=%22none%22 stroke=%22%2364748b%22 stroke-width=%221.5%22%3E%3Cpath stroke-linecap=%22round%22 stroke-linejoin=%22round%22 d=%22M6 8l4 4 4-4%22/%3E%3C/svg%3E')",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 0.95rem center",
+    backgroundSize: "0.75rem 0.75rem",
+  } as const;
 
   const trackedFetch = useCallback(async <T = JsonValue>(path: string, init?: RequestInit): Promise<T> => {
     const response = await fetch(path, init);
@@ -175,6 +186,27 @@ export default function Home() {
     () => partnerUsers.find((user) => user.id === selectedPartnerUserId) || null,
     [partnerUsers, selectedPartnerUserId],
   );
+
+  function parseOrderFromResponse(responseBody: JsonValue): Order | null {
+    if (typeof responseBody !== "object" || !responseBody || !("data" in responseBody)) {
+      return null;
+    }
+
+    const data = (responseBody as { data?: JsonValue }).data;
+    if (typeof data !== "object" || !data) {
+      return null;
+    }
+
+    if ("id" in data && "externalOrderRef" in data) {
+      return data as Order;
+    }
+
+    if ("order" in data && typeof (data as { order?: unknown }).order === "object") {
+      return (data as { order: Order }).order;
+    }
+
+    return null;
+  }
 
   useEffect(() => {
     if (!widgetSession?.widgetUrl) {
@@ -339,7 +371,7 @@ export default function Home() {
     setTransactions(loadedTransactions);
   }
 
-  async function createWidgetSession() {
+  async function loadWidgetSession(orderId?: string) {
     if (!selectedPartnerUserId) {
       setError("Select a partner user first");
       return;
@@ -349,7 +381,11 @@ export default function Home() {
       trackedFetch("/api/fasset/widget-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ partnerUserId: selectedPartnerUserId, theme: widgetTheme }),
+        body: JSON.stringify({
+          partnerUserId: selectedPartnerUserId,
+          theme: widgetTheme,
+          ...(orderId ? { orderId } : {}),
+        }),
       }),
     );
 
@@ -358,14 +394,12 @@ export default function Home() {
         ? (body.data as WidgetSession)
         : null;
 
-    // Force remount of iframe by assigning a fresh key so the iframe is
-    // unmounted and recreated, ensuring the widget loads fresh each time.
-    setIframeKey(`${session?.token ?? ""}-${Date.now()}`);
+    setIframeKey(`${session?.token ?? orderId ?? "legacy"}-${Date.now()}`);
     setWidgetSession(session);
-    setEventLog((logs) => ["Widget session generated", ...logs].slice(0, 15));
+    setEventLog((logs) => [orderId ? "Widget session generated for selected order" : "Widget session generated without order", ...logs].slice(0, 15));
   }
 
-  async function createOrderAndLaunch() {
+  async function createOrder() {
     if (!selectedPartnerUserId) {
       setError("Select a partner user first");
       return;
@@ -388,32 +422,50 @@ export default function Home() {
       }),
     );
 
-    const orderData =
-      typeof orderResp === "object" && orderResp && "data" in orderResp
-        ? // some endpoints return { data: { order: {...} } } and some return { data: { ...orderFields } }
-          (((orderResp as any).data.order as Order) ?? ((orderResp as any).data as Order))
-        : null;
+    const orderData = parseOrderFromResponse(orderResp as JsonValue);
 
     if (!orderData) {
       setError("Failed to create order");
       return;
     }
 
-    setCreatedOrder(orderData);
+    setSelectedOrder(orderData);
+  }
 
-    // Now launch widget session bound to the created order
-    const sessionResp = await runRequest(() =>
-      trackedFetch("/api/fasset/widget-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ partnerUserId: selectedPartnerUserId, orderId: orderData.id, theme: widgetTheme }),
-      }),
-    );
+  async function fetchOrder() {
+    if (!selectedPartnerUserId) {
+      setError("Select a partner user first");
+      return;
+    }
 
-    const session = typeof sessionResp === "object" && sessionResp && "data" in sessionResp ? (sessionResp.data as WidgetSession) : null;
+    if (!orderLookupValue.trim()) {
+      setError(`Enter ${orderLookupMode === "orderId" ? "an orderId" : "an externalOrderRef"}`);
+      return;
+    }
 
-    setWidgetSession(session);
-    setEventLog((logs) => ["Widget session generated (order-bound)", ...logs].slice(0, 15));
+    const query =
+      orderLookupMode === "orderId"
+        ? `orderId=${encodeURIComponent(orderLookupValue.trim())}`
+        : `externalOrderRef=${encodeURIComponent(orderLookupValue.trim())}`;
+
+    const orderResp = await runRequest(() => trackedFetch(`/api/fasset/orders?${query}`));
+    const orderData = parseOrderFromResponse(orderResp as JsonValue);
+
+    if (!orderData) {
+      setError("Failed to fetch order");
+      return;
+    }
+
+    setSelectedOrder(orderData);
+  }
+
+  async function loadSelectedOrderWidget() {
+    if (!selectedOrder) {
+      setError("Select or fetch an order first");
+      return;
+    }
+
+    await loadWidgetSession(selectedOrder.id);
   }
 
   const loadWebhooks = useCallback(async () => {
@@ -523,7 +575,8 @@ export default function Home() {
                   Fetch Users
                 </button>
                 <select
-                  className={`${inputClass} min-w-[260px]`}
+                  className={`${selectClass} min-w-[260px]`}
+                  style={selectStyle}
                   value={selectedPartnerUserId}
                   onChange={(event) => setSelectedPartnerUserId(event.target.value)}
                 >
@@ -608,79 +661,150 @@ export default function Home() {
 
           <Step
             number={3}
-            title="Generate a Widget Session"
-            subtitle="Returns a one-time embed token and the wallet hash sent to the widget."
+            title="Load the Widget"
+            subtitle="Create or fetch an order first, then load the widget with or without that order."
           >
-            <div className="flex flex-wrap items-center gap-3">
-              <Field label="Theme" inline>
-                <select
-                  className={inputClass}
-                  value={widgetTheme}
-                  onChange={(event) => setWidgetTheme(event.target.value as "light" | "dark")}
-                >
-                  <option value="dark">dark</option>
-                  <option value="light">light</option>
-                </select>
-              </Field>
-              <button onClick={createWidgetSession} className={primaryButtonClass} disabled={loading}>
-                Generate Token + Wallet Hash
-              </button>
-            </div>
+            <div className="space-y-5">
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">Widget theme</p>
+                    <p className="text-xs text-slate-500">Applies to any widget session you load from this step.</p>
+                  </div>
+                  <Field label="Theme" inline>
+                    <select
+                      className={selectClass}
+                      style={selectStyle}
+                      value={widgetTheme}
+                      onChange={(event) => setWidgetTheme(event.target.value as "light" | "dark")}
+                    >
+                      <option value="light">light</option>
+                      <option value="dark">dark</option>
+                    </select>
+                  </Field>
+                </div>
+              </section>
 
-            <div className="mt-4 border-t border-slate-200 pt-4">
-              <p className="text-sm font-medium text-slate-900">Order-based launch</p>
-              <p className="text-xs text-slate-500">Create an order and open the widget bound to that order.</p>
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Load widget without an order</p>
+                    <p className="text-xs text-slate-500">Open the widget directly using the current theme.</p>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <button onClick={() => void loadWidgetSession()} className={primaryButtonClass} disabled={loading}>
+                    Load Widget
+                  </button>
+                </div>
+              </section>
 
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <input
-                  className={inputClass}
-                  value={orderExternalRef}
-                  onChange={(e) => setOrderExternalRef(e.target.value)}
-                  placeholder="externalOrderRef"
-                />
-                <input
-                  className={inputClass}
-                  value={orderFiatAmount}
-                  onChange={(e) => setOrderFiatAmount(e.target.value)}
-                  placeholder="fiatAmount"
-                />
-                <input
-                  className={inputClass}
-                  value={orderFiatCurrency}
-                  onChange={(e) => setOrderFiatCurrency(e.target.value)}
-                  placeholder="fiatCurrency"
-                />
-              </div>
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-medium text-slate-900">Create order</p>
+                <p className="text-xs text-slate-500">Create an order first. You can load the widget with it afterward.</p>
 
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <input
-                  className={inputClass}
-                  value={orderRemarks}
-                  onChange={(e) => setOrderRemarks(e.target.value)}
-                  placeholder="remarks (optional)"
-                />
-                <input
-                  type="datetime-local"
-                  className={inputClass}
-                  value={orderExpiresAt}
-                  onChange={(e) => setOrderExpiresAt(e.target.value)}
-                  placeholder="expiresAt (optional)"
-                />
-              </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <input
+                    className={inputClass}
+                    value={orderExternalRef}
+                    onChange={(e) => setOrderExternalRef(e.target.value)}
+                    placeholder="externalOrderRef"
+                  />
+                  <input
+                    className={inputClass}
+                    value={orderFiatAmount}
+                    onChange={(e) => setOrderFiatAmount(e.target.value)}
+                    placeholder="fiatAmount"
+                  />
+                  <input
+                    className={inputClass}
+                    value={orderFiatCurrency}
+                    onChange={(e) => setOrderFiatCurrency(e.target.value)}
+                    placeholder="fiatCurrency"
+                  />
+                </div>
 
-              <div className="mt-3">
-                <button onClick={createOrderAndLaunch} className={primaryButtonClass} disabled={loading}>
-                  Create Order + Launch Widget
-                </button>
-                {createdOrder ? (
-                  <div className="mt-2 text-xs text-slate-600">Order created: {createdOrder.id} ({createdOrder.status})</div>
-                ) : null}
-              </div>
-            </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <input
+                    className={inputClass}
+                    value={orderRemarks}
+                    onChange={(e) => setOrderRemarks(e.target.value)}
+                    placeholder="remarks (optional)"
+                  />
+                  <input
+                    type="datetime-local"
+                    className={inputClass}
+                    value={orderExpiresAt}
+                    onChange={(e) => setOrderExpiresAt(e.target.value)}
+                    placeholder="expiresAt (optional)"
+                  />
+                </div>
 
-            {widgetSession ? (
+                <div className="mt-3">
+                  <button onClick={() => void createOrder()} className={secondaryButtonClass} disabled={loading}>
+                    Create Order
+                  </button>
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-medium text-slate-900">Fetch and select an order</p>
+                <p className="text-xs text-slate-500">Fetch by orderId or externalOrderRef, then use it to load the widget.</p>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <select
+                    className={selectClass}
+                    style={selectStyle}
+                    value={orderLookupMode}
+                    onChange={(e) => setOrderLookupMode(e.target.value as "orderId" | "externalOrderRef")}
+                  >
+                    <option value="orderId">orderId</option>
+                    <option value="externalOrderRef">externalOrderRef</option>
+                  </select>
+                  <input
+                    className={`${inputClass} min-w-[260px] flex-1`}
+                    value={orderLookupValue}
+                    onChange={(e) => setOrderLookupValue(e.target.value)}
+                    placeholder={orderLookupMode === "orderId" ? "Enter orderId" : "Enter externalOrderRef"}
+                  />
+                  <button onClick={() => void fetchOrder()} className={secondaryButtonClass} disabled={loading}>
+                    Fetch Order
+                  </button>
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Selected order</p>
+                    <p className="text-xs text-slate-500">This order will be used when loading the widget.</p>
+                  </div>
+                </div>
+
+                {selectedOrder ? (
+                  <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+                    <KeyValue label="Order ID" value={selectedOrder.id} mono />
+                    <KeyValue label="External Ref" value={selectedOrder.externalOrderRef} mono />
+                    <KeyValue label="Fiat Amount" value={`${selectedOrder.fiatAmount} ${selectedOrder.fiatCurrency}`} />
+                    <KeyValue label="Status" value={selectedOrder.status} />
+                    <KeyValue label="Paid So Far" value={selectedOrder.paidSoFar} />
+                    <KeyValue label="Expires At" value={selectedOrder.expiresAt ?? "-"} />
+                  </dl>
+                ) : (
+                  <p className="mt-4 text-xs text-slate-400">No order selected yet.</p>
+                )}
+
+                <div className="mt-4">
+                  <button onClick={() => void loadSelectedOrderWidget()} className={primaryButtonClass} disabled={loading || !selectedOrder}>
+                    Load Widget With Selected Order
+                  </button>
+                </div>
+              </section>
+
+              {widgetSession ? (
               <dl className="mt-5 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs">
                 <KeyValue label="Widget URL" value={widgetSession.widgetUrl} />
+                {selectedOrder ? <KeyValue label="Selected Order" value={`${selectedOrder.id} (${selectedOrder.status})`} mono /> : null}
                 <div className="flex items-baseline gap-3">
                   <dt className="w-28 shrink-0 text-[11px] font-medium uppercase tracking-wider text-slate-500">
                     Canonical JSON
@@ -692,7 +816,8 @@ export default function Home() {
                 <KeyValue label="Wallet Hash" value={widgetSession.walletHash} mono />
                 <KeyValue label="Wallet Count" value={String(widgetSession.wallets.length)} />
               </dl>
-            ) : null}
+              ) : null}
+            </div>
           </Step>
 
           <Step
@@ -711,9 +836,9 @@ export default function Home() {
                   ref={iframeRef}
                   title="Fasset Widget"
                   src={widgetSession.widgetUrl}
-                  width="100%"
+                  width={450}
                   height="600"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50"
+                  className="w-[450px] max-w-full rounded-xl border border-slate-200 bg-slate-50"
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
                   allow="clipboard-write"
                   referrerPolicy="strict-origin-when-cross-origin"
