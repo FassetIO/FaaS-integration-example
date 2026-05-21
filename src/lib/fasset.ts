@@ -75,12 +75,9 @@ export function getFassetConfig() {
 export function buildRequestRecord(path: string, init?: RequestInit): RequestRecord {
   const { baseUrl } = getFassetConfig();
 
-  const fullUrl = `${baseUrl}${path}`;
-  const displayUrl = fullUrl.replace(baseUrl, "{fasset-api}");
-
   return {
     method: (init?.method ?? "GET").toUpperCase(),
-    url: displayUrl,
+    url: `${baseUrl}${path}`,
     body: typeof init?.body === "string" ? init.body : null,
   };
 }

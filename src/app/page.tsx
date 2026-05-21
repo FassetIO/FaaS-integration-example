@@ -939,10 +939,10 @@ export default function Home() {
             </div>
           ) : null}
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Latest request
+                Latest Requests
               </p>
               {loading ? (
                 <span className="flex items-center gap-1.5 text-xs text-cyan-700">
@@ -952,52 +952,62 @@ export default function Home() {
               ) : null}
             </div>
             {requestLog ? (
-              <div className="space-y-3 px-4 py-3">
+              <div className="divide-y divide-slate-200">
                 {requestLog.map((record, index) => (
-                  <div
-                    key={`${record.url}-${index}`}
-                    className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3"
-                  >
-                    <div className="flex items-center gap-2">
+                  <details key={`${record.url}-${index}`} className="py-2.5 first:pt-2 last:pb-0" open={index === 0}>
+                    <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
                       <MethodPill method={record.method} />
-                      <div className="min-w-0 flex-1">
-                        <div className="w-full max-w-full overflow-x-auto">
-                          <code className="block whitespace-nowrap pr-2 text-xs text-slate-700">{record.url}</code>
+                      <div className="min-w-0 flex-1 overflow-x-auto">
+                        <code className="block whitespace-nowrap text-xs font-semibold text-slate-600 select-text">
+                          {record.url}
+                        </code>
+                      </div>
+                    </summary>
+
+                    <div className="mt-2.5 space-y-3">
+                      {record.body ? (
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                            Payload
+                          </p>
+                          {(() => {
+                            let bodyToShow = record.body;
+                            if (record.method === "POST") {
+                              try {
+                                const parsed = JSON.parse(record.body);
+                                bodyToShow = JSON.stringify(parsed, null, 2);
+                              } catch {
+                                // keep original body if it's not valid JSON
+                              }
+                            }
+
+                            return (
+                              <div className="mt-1 max-w-full overflow-x-auto">
+                                <pre className="whitespace-pre text-[11px] leading-relaxed text-slate-700">
+                                  {bodyToShow}
+                                </pre>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                          Response
+                        </p>
+                        <div className="mt-1 max-w-full overflow-x-auto">
+                          <pre className="whitespace-pre text-[11px] leading-relaxed text-slate-700">
+                            {record.response ? JSON.stringify(record.response, null, 2) : "No response yet."}
+                          </pre>
                         </div>
                       </div>
                     </div>
-                    {record.body ? (
-                      (() => {
-                        let bodyToShow = record.body;
-                        if (record.method === "POST") {
-                          try {
-                            const parsed = JSON.parse(record.body);
-                            bodyToShow = JSON.stringify(parsed, null, 2);
-                          } catch {
-                            // keep original body if it's not valid JSON
-                          }
-                        }
-
-                        return (
-                          <pre className="max-h-48 overflow-auto rounded-md border border-slate-200 bg-white p-3 text-[11px] leading-relaxed text-slate-700">
-                            {bodyToShow}
-                          </pre>
-                        );
-                      })()
-                    ) : null}
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
-                        Response
-                      </p>
-                      <pre className="max-h-48 overflow-auto rounded-md border border-slate-200 bg-white p-3 text-[11px] leading-relaxed text-slate-700">
-                        {record.response ? JSON.stringify(record.response, null, 2) : "No response yet."}
-                      </pre>
-                    </div>
-                  </div>
+                  </details>
                 ))}
               </div>
             ) : (
-              <p className="px-4 py-6 text-center text-xs text-slate-400">No request yet.</p>
+              <p className="py-4 text-xs text-slate-400">No requests yet.</p>
             )}
           </div>
 
@@ -1112,7 +1122,7 @@ function MethodPill({ method }: { method: string }) {
       ? "border-rose-200 bg-rose-50 text-rose-700"
       : "border-slate-200 bg-slate-50 text-slate-700";
   return (
-    <span className={`shrink-0 rounded border px-1.5 py-0.5 font-mono text-[11px] font-bold tracking-wider ${tone}`}>
+    <span className={`inline-flex h-6 w-14 shrink-0 items-center justify-center rounded border font-mono text-[11px] font-bold tracking-wider ${tone}`}>
       {method}
     </span>
   );
