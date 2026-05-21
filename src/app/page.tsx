@@ -954,7 +954,7 @@ export default function Home() {
             {requestLog ? (
               <div className="divide-y divide-slate-200">
                 {requestLog.map((record, index) => (
-                  <details key={`${record.url}-${index}`} className="py-2.5 first:pt-2 last:pb-0" open={index === 0}>
+                  <details key={`${record.url}-${index}`} className="py-2.5 first:pt-2 last:pb-0" open>
                     <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
                       <MethodPill method={record.method} />
                       <div className="min-w-0 flex-1 overflow-x-auto">

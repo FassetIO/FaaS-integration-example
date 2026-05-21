@@ -77,7 +77,7 @@ export function buildRequestRecord(path: string, init?: RequestInit): RequestRec
 
   return {
     method: (init?.method ?? "GET").toUpperCase(),
-    url: `${baseUrl}${path}`,
+    url: `${path}`,
     body: typeof init?.body === "string" ? init.body : null,
   };
 }
