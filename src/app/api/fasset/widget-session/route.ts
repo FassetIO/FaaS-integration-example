@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  buildRequestRecord,
   FassetRequestError,
   generateEmbedToken,
   getFassetConfig,
@@ -28,15 +29,27 @@ export async function POST(request: NextRequest) {
     const { walletHashKey, widgetUrl } = getFassetConfig();
     const walletHash = computeWalletHash(walletsResp.data.wallets, walletHashKey);
 
-    return NextResponse.json({
-      data: {
-        token: tokenResp.data.token,
-        walletHash,
-        widgetUrl,
-        wallets: walletsResp.data.wallets,
+    const meta = {
+      requests: [
+        buildRequestRecord("/partners/embed-token", {
+          method: "POST",
+          body: JSON.stringify({ partnerUserId: body.partnerUserId, theme }),
+        }),
+        buildRequestRecord(`/partners/get-partner-user-wallets?partnerUserId=${body.partnerUserId}`),
+      ],
+    };
+
+    return NextResponse.json(
+      {
+        data: {
+          token: tokenResp.data.token,
+          walletHash,
+          widgetUrl,
+          wallets: walletsResp.data.wallets,
+        },
       },
-      meta: {},
-    });
+      { headers: { "x-fasset-meta": JSON.stringify(meta) } },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const statusCode = error instanceof FassetRequestError ? error.statusCode : 500;

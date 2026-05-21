@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FassetRequestError, getPartnerUserWallets } from "@/lib/fasset";
+import {
+  buildRequestRecord,
+  FassetRequestError,
+  getPartnerUserWallets,
+} from "@/lib/fasset";
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +17,13 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await getPartnerUserWallets(partnerUserId);
-    return NextResponse.json(result);
+    const meta = {
+      ...result.meta,
+      request: buildRequestRecord(`/partners/get-partner-user-wallets?partnerUserId=${partnerUserId}`),
+    };
+
+    const { meta: _ignored, ...body } = result;
+    return NextResponse.json(body, { headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const statusCode = error instanceof FassetRequestError ? error.statusCode : 500;

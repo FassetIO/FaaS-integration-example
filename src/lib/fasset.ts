@@ -25,6 +25,12 @@ type FassetEnvelope<T> = {
   meta: Record<string, unknown>;
 };
 
+export type RequestRecord = {
+  method: string;
+  url: string;
+  body: string | null;
+};
+
 export type CreateUserInput = {
   userIdFromPartner: string;
   metadata?: Record<string, unknown>;
@@ -63,6 +69,19 @@ export function getFassetConfig() {
     apiKey: getRequiredEnv("FASSET_API_KEY"),
     walletHashKey: getRequiredEnv("FASSET_WALLET_HASH_KEY"),
     widgetUrl: process.env.FASSET_WIDGET_URL || DEFAULT_WIDGET_URL,
+  };
+}
+
+export function buildRequestRecord(path: string, init?: RequestInit): RequestRecord {
+  const { baseUrl } = getFassetConfig();
+
+  const fullUrl = `${baseUrl}${path}`;
+  const displayUrl = fullUrl.replace(baseUrl, "{fasset-api}");
+
+  return {
+    method: (init?.method ?? "GET").toUpperCase(),
+    url: displayUrl,
+    body: typeof init?.body === "string" ? init.body : null,
   };
 }
 

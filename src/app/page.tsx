@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { canonicalizeWallets } from "@/lib/wallet-hash";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -50,7 +50,7 @@ type WebhookEvent = {
 type RequestRecord = {
   method: string;
   url: string;
-  body: JsonValue;
+  body: string | null;
 };
 
 async function safeJson(response: Response) {
@@ -61,17 +61,14 @@ async function safeJson(response: Response) {
   }
 }
 
-async function apiFetch<T = JsonValue>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
-  const parsed = await safeJson(response);
-  if (!response.ok) {
-    const message =
-      typeof parsed === "object" && parsed && "message" in parsed
-        ? String((parsed as { message?: string }).message)
-        : "Request failed";
-    throw new Error(message);
-  }
-  return parsed as T;
+function extractRequestRecords(path: string, init?: RequestInit): RequestRecord[] {
+  const fallback: RequestRecord = {
+    method: (init?.method ?? "GET").toUpperCase(),
+    url: path,
+    body: typeof init?.body === "string" ? init.body : null,
+  };
+
+  return [fallback];
 }
 
 export default function Home() {
@@ -97,7 +94,7 @@ export default function Home() {
   const [widgetSession, setWidgetSession] = useState<WidgetSession | null>(null);
   const [widgetTheme, setWidgetTheme] = useState<"light" | "dark">("dark");
 
-  const [requestLog, setRequestLog] = useState<RequestRecord | null>(null);
+  const [requestLog, setRequestLog] = useState<RequestRecord[] | null>(null);
   const [responseLog, setResponseLog] = useState<JsonValue | null>(null);
   const [eventLog, setEventLog] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -105,22 +102,45 @@ export default function Home() {
   const [webhooks, setWebhooks] = useState<WebhookEvent[]>([]);
   const [webhookPolling, setWebhookPolling] = useState(false);
 
-  function trackedFetch<T = JsonValue>(path: string, init?: RequestInit): Promise<T> {
-    let parsedBody: JsonValue = null;
-    if (init?.body && typeof init.body === "string") {
-      try {
-        parsedBody = JSON.parse(init.body) as JsonValue;
-      } catch {
-        parsedBody = init.body as JsonValue;
-      }
+  const trackedFetch = useCallback(async <T = JsonValue>(path: string, init?: RequestInit): Promise<T> => {
+    const response = await fetch(path, init);
+    const parsed = await safeJson(response);
+
+    if (!response.ok) {
+      const message =
+        typeof parsed === "object" && parsed && "message" in parsed
+          ? String((parsed as { message?: string }).message)
+          : "Request failed";
+      throw new Error(message);
     }
-    setRequestLog({
-      method: (init?.method ?? "GET").toUpperCase(),
-      url: path,
-      body: parsedBody,
-    });
-    return apiFetch<T>(path, init);
-  }
+
+    // Try to read metadata from the x-fasset-meta header. If present, use it
+    // to populate the latest request(s). Otherwise fall back to a synthetic
+    // record based on the proxy path and init.
+    const metaHeader = response.headers.get("x-fasset-meta");
+    if (metaHeader) {
+      try {
+        const meta = JSON.parse(metaHeader) as unknown;
+        if (meta && typeof meta === "object") {
+          if (Array.isArray((meta as any).requests)) {
+            setRequestLog((meta as any).requests as RequestRecord[]);
+          } else if ((meta as any).request) {
+            setRequestLog([(meta as any).request as RequestRecord]);
+          } else {
+            setRequestLog(extractRequestRecords(path, init));
+          }
+        } else {
+          setRequestLog(extractRequestRecords(path, init));
+        }
+      } catch {
+        setRequestLog(extractRequestRecords(path, init));
+      }
+    } else {
+      setRequestLog(extractRequestRecords(path, init));
+    }
+
+    return parsed as T;
+  }, []);
 
   const selectedUser = useMemo(
     () => partnerUsers.find((user) => user.id === selectedPartnerUserId) || null,
@@ -313,7 +333,7 @@ export default function Home() {
     setEventLog((logs) => ["Widget session generated", ...logs].slice(0, 15));
   }
 
-  async function loadWebhooks() {
+  const loadWebhooks = useCallback(async () => {
     try {
       const parsed = await trackedFetch("/api/fasset/webhooks");
 
@@ -327,15 +347,15 @@ export default function Home() {
       const message = err instanceof Error ? err.message : "Unknown error";
       setError(`Failed to load webhooks: ${message}`);
     }
-  }
+  }, [trackedFetch]);
 
   useEffect(() => {
     if (!webhookPolling) return;
 
-    loadWebhooks();
+    void Promise.resolve().then(loadWebhooks);
     const interval = setInterval(loadWebhooks, 3000);
     return () => clearInterval(interval);
-  }, [webhookPolling]);
+  }, [webhookPolling, loadWebhooks]);
 
   async function simulateWebhook() {
     await runRequest(async () => {
@@ -672,18 +692,41 @@ export default function Home() {
               ) : null}
             </div>
             {requestLog ? (
-              <div className="space-y-2 px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <MethodPill method={requestLog.method} />
-                  <code className="break-all text-xs text-slate-700">{requestLog.url}</code>
-                </div>
-                {requestLog.body !== null && requestLog.body !== undefined ? (
-                  <pre className="max-h-48 overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-700">
-                    {typeof requestLog.body === "string"
-                      ? requestLog.body
-                      : JSON.stringify(requestLog.body, null, 2)}
-                  </pre>
-                ) : null}
+              <div className="space-y-3 px-4 py-3">
+                {requestLog.map((record, index) => (
+                  <div
+                    key={`${record.url}-${index}`}
+                    className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MethodPill method={record.method} />
+                      <div className="min-w-0 flex-1">
+                        <div className="w-full max-w-full overflow-x-auto">
+                          <code className="block whitespace-nowrap pr-2 text-xs text-slate-700">{record.url}</code>
+                        </div>
+                      </div>
+                    </div>
+                    {record.body ? (
+                      (() => {
+                        let bodyToShow = record.body;
+                        if (record.method === "POST") {
+                          try {
+                            const parsed = JSON.parse(record.body);
+                            bodyToShow = JSON.stringify(parsed, null, 2);
+                          } catch {
+                            // keep original body if it's not valid JSON
+                          }
+                        }
+
+                        return (
+                          <pre className="max-h-48 overflow-auto rounded-md border border-slate-200 bg-white p-3 text-[11px] leading-relaxed text-slate-700">
+                            {bodyToShow}
+                          </pre>
+                        );
+                      })()
+                    ) : null}
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="px-4 py-6 text-center text-xs text-slate-400">No request yet.</p>
@@ -714,9 +757,6 @@ const primaryButtonClass =
 
 const secondaryButtonClass =
   "rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
-
-const eyebrowClass =
-  "text-[11px] font-medium uppercase tracking-wider text-slate-500";
 
 function Step({
   number,
