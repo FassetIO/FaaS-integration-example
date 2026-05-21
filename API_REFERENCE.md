@@ -42,7 +42,7 @@ Two distinct identifiers are used throughout the API:
 
 | Identifier | Owned By | Format | Description |
 |------------|----------|--------|-------------|
-| `userIdFromPartner` | Partner | Any string | The ID assigned by the partner in their own system. Provided when calling `POST /partners/create-user`. |
+| `userIdFromPartner` | Partner | String, max 64 chars | The ID assigned by the partner in their own system. Provided when calling `POST /partners/create-user`. |
 | `partnerUserId` | Fasset | UUID | The internal ID assigned by Fasset. Returned as the `id` field from `GET /partners/get-partner-users`. |
 
 These are **not interchangeable**. Each endpoint specifies which one to use.
@@ -168,7 +168,7 @@ Creates a new user under the partner organization.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `userIdFromPartner` | string | Yes | Unique identifier for the user in the partner's system |
+| `userIdFromPartner` | string | Yes | Unique identifier for the user in the partner's system. Max 64 characters. |
 | `metadata` | object | No | Additional user information (name, email, etc.) |
 
 **Example**
@@ -477,20 +477,20 @@ The order endpoints power the payment-order flow. Skip this section if you only 
 ```
 NOT_PAID ──deposit────► PARTIALLY_PAID ──deposit────► PAID
    │                          │
-   └── 24h TTL ───────────────┴── EXPIRED
+   └── expiresAt passed ──────┴── EXPIRED
    └── new order ─────────────── SUPERSEDED
 ```
 
 - `NOT_PAID` — open, no funds applied yet.
 - `PARTIALLY_PAID` — open, at least one deposit applied but target not yet met.
 - `PAID` — target met. Terminal.
-- `EXPIRED` — TTL passed before fully paid. Terminal.
+- `EXPIRED` — `expiresAt` passed before the order was fully paid. Only applies to orders that were created with an `expiresAt`. Terminal.
 - `SUPERSEDED` — a newer order replaced this one for the same user. Terminal.
 - `CANCELLED` — reserved for future partner-driven cancellation. Terminal.
 
 `PAID`, `EXPIRED`, `SUPERSEDED`, and `CANCELLED` are terminal — orders never leave a terminal state.
 
-Orders auto-expire 24h after creation by default. Partners can override via `expiresAt` on creation.
+Orders have no expiry by default — they stay open until paid, superseded, or cancelled. Partners can opt into an expiry by passing `expiresAt` at creation.
 
 ### 1. Create or Resume Order
 
@@ -506,7 +506,7 @@ Creates a new payment order for a user, or returns the existing open order if `e
 | `externalOrderRef` | string | Yes | Partner-supplied reference (e.g. invoice number). Unique per `(partner, externalOrderRef)`. Drives idempotency. |
 | `fiatAmount` | string | Yes | Decimal string. The fiat target the user must pay. |
 | `fiatCurrency` | string | Yes | Fiat currency. `USD` is supported today. |
-| `expiresAt` | string | No | ISO 8601 with timezone. Must be a future timestamp. Defaults to `createdAt + 24h`. |
+| `expiresAt` | string | No | ISO 8601 with timezone. Must be a future timestamp. Omit for an order that never auto-expires. |
 | `remarks` | string | No | Free-text memo (≤ 500 chars). Echoed in order reads and `order.updated` webhooks. |
 
 **Idempotency rules**
@@ -515,7 +515,8 @@ Creates a new payment order for a user, or returns the existing open order if `e
 |---|---|
 | No open order | New order created |
 | Open order, same `externalOrderRef` | Existing order returned unchanged |
-| Open order, different `externalOrderRef` | Old order flipped to `SUPERSEDED`, new one created |
+| Open order, different `externalOrderRef`, `paidSoFar = 0` | Old order flipped to `SUPERSEDED`, new one created |
+| Open order, different `externalOrderRef`, `paidSoFar > 0` | **409 Conflict.** A partial payment cannot be silently discarded — either resume with the original `externalOrderRef`, or wait for the order to be paid / to expire. |
 | Open order whose `expiresAt` has passed | Old order flipped to `EXPIRED`, new one created |
 
 **Example**
@@ -561,7 +562,7 @@ curl -X POST https://dev-faas.fasset.tech/faas-service/api/v1/orders \
 | `fiatCurrency` | string | Fiat currency code |
 | `paidSoFar` | string | Cumulative fiat applied across all completed deposits |
 | `status` | string | Order status — see [Order lifecycle](#order-lifecycle) |
-| `expiresAt` | string | ISO 8601. Auto-expires after this. |
+| `expiresAt` | string \| null | ISO 8601 if the partner set one; `null` means the order never auto-expires. |
 | `remarks` | string \| null | Partner memo, if provided |
 
 **Endpoint-specific errors**
@@ -570,6 +571,7 @@ curl -X POST https://dev-faas.fasset.tech/faas-service/api/v1/orders \
 |--------|---------|
 | 400 | `expiresAt must be a future timestamp` |
 | 400 | Validation failures on required fields |
+| 409 | `User has an open order ({externalOrderRef}) with a partial payment...` — sent when the user has a `PARTIALLY_PAID` order and the partner tries to create a different one. |
 
 ---
 
@@ -1107,12 +1109,12 @@ app.post('/api/fasset-webhook', express.json(), async (req, res) => {
 
 ### Cryptocurrencies
 
-| Token | Chains Supported | Asset ID Examples |
-|-------|-----------------|-------------------|
-| USDT | Ethereum (ERC20), Tron (TRC20) | `USDT_ERC20`, `TRX_USDT_S2UZ` |
-| USDC | Ethereum (ERC20), Sepolia Testnet | `USDC_ETH_TEST5_0GER` |
-| ETH | Ethereum, Sepolia Testnet | `ETH_TEST5` |
-| TRX | Tron | `TRX_TEST` |
+| Token | Chains Supported |
+|-------|-----------------|
+| USDT | Ethereum (ERC20), Tron (TRC20) |
+| USDC | Ethereum (ERC20), Sepolia Testnet |
+| ETH | Ethereum, Sepolia Testnet |
+| TRX | Tron |
 
 ### Chain Identifiers
 
