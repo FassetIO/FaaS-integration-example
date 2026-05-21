@@ -28,6 +28,17 @@ type WidgetSession = {
   wallets: Wallet[];
 };
 
+type Order = {
+  id: string;
+  externalOrderRef: string;
+  fiatAmount: string;
+  fiatCurrency: string;
+  paidSoFar: string;
+  status: string;
+  expiresAt?: string | null;
+  remarks?: string | null;
+};
+
 type TransactionItem = {
   id: string;
   userId: string;
@@ -93,6 +104,23 @@ export default function Home() {
 
   const [widgetSession, setWidgetSession] = useState<WidgetSession | null>(null);
   const [widgetTheme, setWidgetTheme] = useState<"light" | "dark">("dark");
+
+  function genHex(len: number) {
+    try {
+      const bytes = crypto.getRandomValues(new Uint8Array(Math.ceil(len / 2)));
+      return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, len);
+    } catch {
+      // fallback
+      return Array.from({ length: len }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+    }
+  }
+
+  const [orderExternalRef, setOrderExternalRef] = useState(() => genHex(12));
+  const [orderFiatAmount, setOrderFiatAmount] = useState("50");
+  const [orderFiatCurrency, setOrderFiatCurrency] = useState("USD");
+  const [orderRemarks, setOrderRemarks] = useState("");
+  const [orderExpiresAt, setOrderExpiresAt] = useState("");
+  const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [iframeKey, setIframeKey] = useState<string | null>(null);
 
   const [requestLog, setRequestLog] = useState<RequestRecord[] | null>(null);
@@ -337,6 +365,57 @@ export default function Home() {
     setEventLog((logs) => ["Widget session generated", ...logs].slice(0, 15));
   }
 
+  async function createOrderAndLaunch() {
+    if (!selectedPartnerUserId) {
+      setError("Select a partner user first");
+      return;
+    }
+
+    const orderBody = {
+      partnerUserId: selectedPartnerUserId,
+      externalOrderRef: orderExternalRef,
+      fiatAmount: orderFiatAmount,
+      fiatCurrency: orderFiatCurrency,
+      remarks: orderRemarks || undefined,
+      expiresAt: orderExpiresAt || undefined,
+    };
+
+    const orderResp = await runRequest(() =>
+      trackedFetch("/api/fasset/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderBody),
+      }),
+    );
+
+    const orderData =
+      typeof orderResp === "object" && orderResp && "data" in orderResp
+        ? // some endpoints return { data: { order: {...} } } and some return { data: { ...orderFields } }
+          (((orderResp as any).data.order as Order) ?? ((orderResp as any).data as Order))
+        : null;
+
+    if (!orderData) {
+      setError("Failed to create order");
+      return;
+    }
+
+    setCreatedOrder(orderData);
+
+    // Now launch widget session bound to the created order
+    const sessionResp = await runRequest(() =>
+      trackedFetch("/api/fasset/widget-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partnerUserId: selectedPartnerUserId, orderId: orderData.id, theme: widgetTheme }),
+      }),
+    );
+
+    const session = typeof sessionResp === "object" && sessionResp && "data" in sessionResp ? (sessionResp.data as WidgetSession) : null;
+
+    setWidgetSession(session);
+    setEventLog((logs) => ["Widget session generated (order-bound)", ...logs].slice(0, 15));
+  }
+
   const loadWebhooks = useCallback(async () => {
     try {
       const parsed = await trackedFetch("/api/fasset/webhooks");
@@ -546,6 +625,57 @@ export default function Home() {
               <button onClick={createWidgetSession} className={primaryButtonClass} disabled={loading}>
                 Generate Token + Wallet Hash
               </button>
+            </div>
+
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <p className="text-sm font-medium text-slate-900">Order-based launch</p>
+              <p className="text-xs text-slate-500">Create an order and open the widget bound to that order.</p>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <input
+                  className={inputClass}
+                  value={orderExternalRef}
+                  onChange={(e) => setOrderExternalRef(e.target.value)}
+                  placeholder="externalOrderRef"
+                />
+                <input
+                  className={inputClass}
+                  value={orderFiatAmount}
+                  onChange={(e) => setOrderFiatAmount(e.target.value)}
+                  placeholder="fiatAmount"
+                />
+                <input
+                  className={inputClass}
+                  value={orderFiatCurrency}
+                  onChange={(e) => setOrderFiatCurrency(e.target.value)}
+                  placeholder="fiatCurrency"
+                />
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <input
+                  className={inputClass}
+                  value={orderRemarks}
+                  onChange={(e) => setOrderRemarks(e.target.value)}
+                  placeholder="remarks (optional)"
+                />
+                <input
+                  type="datetime-local"
+                  className={inputClass}
+                  value={orderExpiresAt}
+                  onChange={(e) => setOrderExpiresAt(e.target.value)}
+                  placeholder="expiresAt (optional)"
+                />
+              </div>
+
+              <div className="mt-3">
+                <button onClick={createOrderAndLaunch} className={primaryButtonClass} disabled={loading}>
+                  Create Order + Launch Widget
+                </button>
+                {createdOrder ? (
+                  <div className="mt-2 text-xs text-slate-600">Order created: {createdOrder.id} ({createdOrder.status})</div>
+                ) : null}
+              </div>
             </div>
 
             {widgetSession ? (

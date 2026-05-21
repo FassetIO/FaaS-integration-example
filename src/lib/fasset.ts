@@ -142,11 +142,55 @@ export async function getPartnerUsers(page = 1, pageSize = 20) {
   );
 }
 
-export async function generateEmbedToken(partnerUserId: string, theme: "light" | "dark" = "dark") {
+export async function generateEmbedToken(
+  partnerUserId: string,
+  orderId?: string,
+  theme: "light" | "dark" = "dark",
+) {
+  const body: Record<string, unknown> = { partnerUserId, theme };
+  if (orderId) {
+    body.orderId = orderId;
+  }
+
   return requestFasset<{ token: string }>("/partners/embed-token", {
     method: "POST",
-    body: JSON.stringify({ partnerUserId, theme }),
+    body: JSON.stringify(body),
   });
+}
+
+export type CreateOrderInput = {
+  partnerUserId: string;
+  externalOrderRef: string;
+  fiatAmount: string;
+  fiatCurrency: string;
+  expiresAt?: string;
+  remarks?: string;
+};
+
+export type OrderOutput = {
+  id: string;
+  externalOrderRef: string;
+  fiatAmount: string;
+  fiatCurrency: string;
+  paidSoFar: string;
+  status: string;
+  expiresAt?: string | null;
+  remarks?: string | null;
+};
+
+export async function createOrder(input: CreateOrderInput) {
+  return requestFasset<{ order: OrderOutput }>("/orders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getOrder(options: { orderId?: string; externalOrderRef?: string }) {
+  const params = new URLSearchParams();
+  if (options.orderId) params.set("orderId", options.orderId);
+  if (options.externalOrderRef) params.set("externalOrderRef", options.externalOrderRef);
+
+  return requestFasset<{ order: OrderOutput }>(`/orders?${params.toString()}`);
 }
 
 export async function getPartnerUserWallets(partnerUserId: string) {
