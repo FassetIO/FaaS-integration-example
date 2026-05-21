@@ -17,12 +17,14 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await getPartnerUserWallets(partnerUserId);
+    const { meta: _ignored, ...body } = result;
     const meta = {
       ...result.meta,
-      request: buildRequestRecord(`/partners/get-partner-user-wallets?partnerUserId=${partnerUserId}`),
+      request: {
+        ...buildRequestRecord(`/partners/get-partner-user-wallets?partnerUserId=${partnerUserId}`),
+        response: body,
+      },
     };
-
-    const { meta: _ignored, ...body } = result;
     return NextResponse.json(body, { headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -62,6 +62,7 @@ type RequestRecord = {
   method: string;
   url: string;
   body: string | null;
+  response?: JsonValue;
 };
 
 async function safeJson(response: Response) {
@@ -72,11 +73,12 @@ async function safeJson(response: Response) {
   }
 }
 
-function extractRequestRecords(path: string, init?: RequestInit): RequestRecord[] {
+function extractRequestRecords(path: string, init?: RequestInit, response?: JsonValue): RequestRecord[] {
   const fallback: RequestRecord = {
     method: (init?.method ?? "GET").toUpperCase(),
     url: path,
     body: typeof init?.body === "string" ? init.body : null,
+    response,
   };
 
   return [fallback];
@@ -126,7 +128,6 @@ export default function Home() {
   const [iframeKey, setIframeKey] = useState<string | null>(null);
 
   const [requestLog, setRequestLog] = useState<RequestRecord[] | null>(null);
-  const [responseLog, setResponseLog] = useState<JsonValue | null>(null);
   const [eventLog, setEventLog] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,18 +166,18 @@ export default function Home() {
           if (Array.isArray((meta as any).requests)) {
             setRequestLog((meta as any).requests as RequestRecord[]);
           } else if ((meta as any).request) {
-            setRequestLog([(meta as any).request as RequestRecord]);
+            setRequestLog([((meta as any).request as RequestRecord)]);
           } else {
-            setRequestLog(extractRequestRecords(path, init));
+            setRequestLog(extractRequestRecords(path, init, parsed));
           }
         } else {
-          setRequestLog(extractRequestRecords(path, init));
+          setRequestLog(extractRequestRecords(path, init, parsed));
         }
       } catch {
-        setRequestLog(extractRequestRecords(path, init));
+        setRequestLog(extractRequestRecords(path, init, parsed));
       }
     } else {
-      setRequestLog(extractRequestRecords(path, init));
+      setRequestLog(extractRequestRecords(path, init, parsed));
     }
 
     return parsed as T;
@@ -268,7 +269,6 @@ export default function Home() {
     setError(null);
     try {
       const result = await task();
-      setResponseLog(result as JsonValue);
       return result;
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "Unknown error";
@@ -985,6 +985,14 @@ export default function Home() {
                         );
                       })()
                     ) : null}
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                        Response
+                      </p>
+                      <pre className="max-h-48 overflow-auto rounded-md border border-slate-200 bg-white p-3 text-[11px] leading-relaxed text-slate-700">
+                        {record.response ? JSON.stringify(record.response, null, 2) : "No response yet."}
+                      </pre>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -993,16 +1001,6 @@ export default function Home() {
             )}
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Latest response
-              </p>
-            </div>
-            <pre className="max-h-[480px] overflow-auto p-4 text-[11px] leading-relaxed text-slate-700">
-              {responseLog ? JSON.stringify(responseLog, null, 2) : "No response yet."}
-            </pre>
-          </div>
         </aside>
       </main>
     </div>

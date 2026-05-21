@@ -25,12 +25,15 @@ export async function POST(request: NextRequest) {
       remarks: body.remarks,
     });
 
+    const { meta: _ignored, ...responseBody } = result;
     const meta = {
       ...(result.meta ?? {}),
-      request: buildRequestRecord("/orders", { method: "POST", body: JSON.stringify(body) }),
+      request: {
+        ...buildRequestRecord("/orders", { method: "POST", body: JSON.stringify(body) }),
+        response: responseBody,
+      },
     };
 
-    const { meta: _ignored, ...responseBody } = result;
     return NextResponse.json(responseBody, { status: 201, headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -50,12 +53,15 @@ export async function GET(request: NextRequest) {
 
     const result = await getOrder({ orderId, externalOrderRef });
 
+    const { meta: _ignored, ...body } = result;
     const meta = {
       ...(result.meta ?? {}),
-      request: buildRequestRecord(`/orders?${orderId ? `orderId=${orderId}` : `externalOrderRef=${externalOrderRef}`}`),
+      request: {
+        ...buildRequestRecord(`/orders?${orderId ? `orderId=${orderId}` : `externalOrderRef=${externalOrderRef}`}`),
+        response: body,
+      },
     };
 
-    const { meta: _ignored, ...body } = result;
     return NextResponse.json(body, { headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
