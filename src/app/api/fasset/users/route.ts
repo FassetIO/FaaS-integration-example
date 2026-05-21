@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createPartnerUser, FassetRequestError, getPartnerUsers } from "@/lib/fasset";
+import {
+  buildRequestRecord,
+  createPartnerUser,
+  FassetRequestError,
+  getPartnerUsers,
+} from "@/lib/fasset";
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,7 +12,13 @@ export async function GET(request: NextRequest) {
     const pageSize = Number(request.nextUrl.searchParams.get("pageSize") ?? "20");
 
     const result = await getPartnerUsers(page, pageSize);
-    return NextResponse.json(result);
+    const meta = {
+      ...result.meta,
+      request: buildRequestRecord(`/partners/get-partner-users?page=${page}&pageSize=${pageSize}`),
+    };
+
+    const { meta: _ignored, ...body } = result;
+    return NextResponse.json(body, { headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const statusCode = error instanceof FassetRequestError ? error.statusCode : 500;
@@ -34,7 +45,19 @@ export async function POST(request: NextRequest) {
       metadata: body.metadata,
     });
 
-    return NextResponse.json(result, { status: 201 });
+    const meta = {
+      ...result.meta,
+      request: buildRequestRecord("/partners/create-user", {
+        method: "POST",
+        body: JSON.stringify({
+          userIdFromPartner: body.userIdFromPartner,
+          metadata: body.metadata,
+        }),
+      }),
+    };
+
+    const { meta: _ignored, ...responseBody } = result;
+    return NextResponse.json(responseBody, { status: 201, headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const statusCode = error instanceof FassetRequestError ? error.statusCode : 500;

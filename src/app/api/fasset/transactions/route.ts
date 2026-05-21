@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FassetRequestError, getPartnerUserTransactions } from "@/lib/fasset";
+import {
+  buildRequestRecord,
+  FassetRequestError,
+  getPartnerUserTransactions,
+} from "@/lib/fasset";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +18,27 @@ export async function GET(request: NextRequest) {
     const toDate = request.nextUrl.searchParams.get("toDate") || undefined;
 
     const result = await getPartnerUserTransactions({ userId, page, pageSize, fromDate, toDate });
-    return NextResponse.json(result);
+
+    const params = new URLSearchParams({
+      userId,
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+
+    if (fromDate) {
+      params.set("fromDate", fromDate);
+    }
+    if (toDate) {
+      params.set("toDate", toDate);
+    }
+
+    const meta = {
+      ...result.meta,
+      request: buildRequestRecord(`/transactions/get-partner-user-transactions?${params.toString()}`),
+    };
+
+    const { meta: _ignored, ...body } = result;
+    return NextResponse.json(body, { headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const statusCode = error instanceof FassetRequestError ? error.statusCode : 500;
