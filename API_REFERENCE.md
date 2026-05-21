@@ -18,7 +18,21 @@ Fasset as a Service (FaaS) provides a REST API for integrating cryptocurrency wa
 
 All requests and responses use JSON. All timestamps are ISO 8601 (UTC).
 
-**List pagination:** Paginated list endpoints use query parameters `page` (1-indexed; default `1`) and `pageSize` (default `20`).
+---
+
+## Integration Modes
+
+FaaS supports two complementary flows. A partner can use one or both, and a single user can move between them.
+
+### Wallet-only flow
+
+The partner provisions wallets for a user; the widget displays deposit addresses and QR codes; on-chain deposits are forwarded as `transaction.updated` webhooks. There is no notion of a payable target — the partner sees raw deposits.
+
+### Payment-order flow
+
+The partner creates an **order** ("user X owes $50") server-side, mints an embed token bound to that order, and embeds the widget. The widget shows the fiat target, quotes the crypto-equivalent at a live rate, and tracks deposits against the target. As the order fills, expires, or is replaced, the partner receives `order.updated` webhooks.
+
+Order-flow is opt-in and additive — wallet-only behavior is unchanged. Exactly one webhook is delivered per deposit; the `event` field inside `data` discriminates between `transaction.updated` and `order.updated`.
 
 ---
 
@@ -335,7 +349,7 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/transactions/get-p
 
 ### 4. Generate Embed Token
 
-Generates a one-time JWT used to load the Fasset Connect widget.
+Generates a JWT used to load the Fasset Connect widget. Optionally binds the token to a specific order for the payment-order flow.
 
 **Endpoint:** `POST /partners/embed-token`
 
@@ -344,9 +358,10 @@ Generates a one-time JWT used to load the Fasset Connect widget.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `partnerUserId` | string | Yes | Internal `partnerUserId` (UUID) — see [User Identifiers](#user-identifiers) |
+| `orderId` | string | No | An order UUID created via [`POST /orders`](#1-create-or-resume-order). When present, the widget bootstraps in payment-order mode and reads this order. Omit for the wallet-only flow. |
 | `theme` | string | No | Widget theme: `light` or `dark` |
 
-**Example**
+**Example — wallet-only**
 
 ```bash
 curl -X POST https://dev-faas.fasset.tech/faas-service/api/v1/partners/embed-token \
@@ -354,6 +369,19 @@ curl -X POST https://dev-faas.fasset.tech/faas-service/api/v1/partners/embed-tok
   -H "X-API-KEY: your_api_key_here" \
   -d '{
     "partnerUserId": "09dc741e-f1dd-42a0-a681-af41fafc1dd8",
+    "theme": "dark"
+  }'
+```
+
+**Example — bound to an order**
+
+```bash
+curl -X POST https://dev-faas.fasset.tech/faas-service/api/v1/partners/embed-token \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: your_api_key_here" \
+  -d '{
+    "partnerUserId": "09dc741e-f1dd-42a0-a681-af41fafc1dd8",
+    "orderId": "7a1d6b8e-1c2f-4a9e-9b7d-9c8a1f2e3b4d",
     "theme": "dark"
   }'
 ```
@@ -370,9 +398,10 @@ curl -X POST https://dev-faas.fasset.tech/faas-service/api/v1/partners/embed-tok
 ```
 
 **Token properties**
-- **Expiration:** 5 minutes from generation.
-- **One-time use:** Invalidated after first use. Generate a fresh token every time the widget is loaded — **do not cache or reuse embed tokens**.
-- **Scope:** Generate server-side only. Never call this endpoint from client code.
+- **Expiration:** 30 minutes from generation.
+- **Multi-use within window:** A single token can be re-sent to the widget on reload as long as it has not expired. There is no nonce invalidation today.
+- **Order binding (when `orderId` supplied):** The token is scoped to that order. Pass the `orderId` returned by [`POST /orders`](#1-create-or-resume-order).
+- **Scope:** Mint server-side only. Never call this endpoint from client code.
 
 ---
 
@@ -439,6 +468,149 @@ curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/partners/get-partn
 
 ---
 
+## Payment Orders
+
+The order endpoints power the payment-order flow. Skip this section if you only need wallet-only widgets.
+
+### Order lifecycle
+
+```
+NOT_PAID ──deposit────► PARTIALLY_PAID ──deposit────► PAID
+   │                          │
+   └── 24h TTL ───────────────┴── EXPIRED
+   └── new order ─────────────── SUPERSEDED
+```
+
+- `NOT_PAID` — open, no funds applied yet.
+- `PARTIALLY_PAID` — open, at least one deposit applied but target not yet met.
+- `PAID` — target met. Terminal.
+- `EXPIRED` — TTL passed before fully paid. Terminal.
+- `SUPERSEDED` — a newer order replaced this one for the same user. Terminal.
+- `CANCELLED` — reserved for future partner-driven cancellation. Terminal.
+
+`PAID`, `EXPIRED`, `SUPERSEDED`, and `CANCELLED` are terminal — orders never leave a terminal state.
+
+Orders auto-expire 24h after creation by default. Partners can override via `expiresAt` on creation.
+
+### 1. Create or Resume Order
+
+Creates a new payment order for a user, or returns the existing open order if `externalOrderRef` matches. Idempotent.
+
+**Endpoint:** `POST /orders`
+
+**Request Body**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `partnerUserId` | string | Yes | Internal `partnerUserId` (UUID) |
+| `externalOrderRef` | string | Yes | Partner-supplied reference (e.g. invoice number). Unique per `(partner, externalOrderRef)`. Drives idempotency. |
+| `fiatAmount` | string | Yes | Decimal string. The fiat target the user must pay. |
+| `fiatCurrency` | string | Yes | Fiat currency. `USD` is supported today. |
+| `expiresAt` | string | No | ISO 8601 with timezone. Must be a future timestamp. Defaults to `createdAt + 24h`. |
+| `remarks` | string | No | Free-text memo (≤ 500 chars). Echoed in order reads and `order.updated` webhooks. |
+
+**Idempotency rules**
+
+| Existing state for `partnerUserId` | Behavior |
+|---|---|
+| No open order | New order created |
+| Open order, same `externalOrderRef` | Existing order returned unchanged |
+| Open order, different `externalOrderRef` | Old order flipped to `SUPERSEDED`, new one created |
+| Open order whose `expiresAt` has passed | Old order flipped to `EXPIRED`, new one created |
+
+**Example**
+
+```bash
+curl -X POST https://dev-faas.fasset.tech/faas-service/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: your_api_key_here" \
+  -d '{
+    "partnerUserId": "09dc741e-f1dd-42a0-a681-af41fafc1dd8",
+    "externalOrderRef": "INV-001",
+    "fiatAmount": "50",
+    "fiatCurrency": "USD",
+    "remarks": "May subscription"
+  }'
+```
+
+**Response (201 Created)**
+
+```json
+{
+  "data": {
+    "id": "7a1d6b8e-1c2f-4a9e-9b7d-9c8a1f2e3b4d",
+    "externalOrderRef": "INV-001",
+    "fiatAmount": "50",
+    "fiatCurrency": "USD",
+    "paidSoFar": "0",
+    "status": "NOT_PAID",
+    "expiresAt": "2026-05-22T07:00:00.000Z",
+    "remarks": "May subscription"
+  },
+  "meta": {}
+}
+```
+
+**Response Fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Our internal order UUID. Pass to `POST /partners/embed-token` as `orderId`. |
+| `externalOrderRef` | string | Echo of the partner-supplied reference |
+| `fiatAmount` | string | Target as decimal string |
+| `fiatCurrency` | string | Fiat currency code |
+| `paidSoFar` | string | Cumulative fiat applied across all completed deposits |
+| `status` | string | Order status — see [Order lifecycle](#order-lifecycle) |
+| `expiresAt` | string | ISO 8601. Auto-expires after this. |
+| `remarks` | string \| null | Partner memo, if provided |
+
+**Endpoint-specific errors**
+
+| Status | Message |
+|--------|---------|
+| 400 | `expiresAt must be a future timestamp` |
+| 400 | Validation failures on required fields |
+
+---
+
+### 2. Get Order
+
+Lookup a single order by either Fasset's `orderId` or the partner's `externalOrderRef`. Exactly one is required. Scoped to the calling partner — cross-partner reads return 404.
+
+**Endpoint:** `GET /orders`
+
+**Query Parameters**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `orderId` | string | One of | Fasset's order UUID |
+| `externalOrderRef` | string | One of | Partner-supplied reference |
+
+**Example — by orderId**
+
+```bash
+curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/orders?orderId=7a1d6b8e-1c2f-4a9e-9b7d-9c8a1f2e3b4d" \
+  -H "X-API-KEY: your_api_key_here"
+```
+
+**Example — by externalOrderRef**
+
+```bash
+curl -X GET "https://dev-faas.fasset.tech/faas-service/api/v1/orders?externalOrderRef=INV-001" \
+  -H "X-API-KEY: your_api_key_here"
+```
+
+**Response (200 OK)** — same shape as `POST /orders` response.
+
+**Endpoint-specific errors**
+
+| Status | Message |
+|--------|---------|
+| 400 | `Provide exactly one of orderId or externalOrderRef` |
+| 404 | `Order not found` (also returned for cross-partner reads) |
+
+---
+
 ## Widget Integration
 
 The Fasset Connect widget is embedded via an iframe. It displays the user's wallets, deposit addresses, and QR codes.
@@ -449,7 +621,7 @@ Before integrating the widget, make sure the page origin that embeds the iframe 
 
 #### Step 1: Generate Embed Token
 
-Call `POST /partners/embed-token` server-side. See [Generate Embed Token](#4-generate-embed-token) for the full contract.
+Call `POST /partners/embed-token` server-side. Pass `orderId` if you want the widget bound to a specific order; omit it for the wallet-only flow. See [Generate Embed Token](#4-generate-embed-token) for the full contract.
 
 #### Step 2: Compute Wallet Hash
 
@@ -774,7 +946,7 @@ app.post('/api/fasset/widget-session', async (req, res) => {
 
 ## Webhooks
 
-Fasset delivers webhook notifications to the partner's configured endpoint when transaction status changes.
+Fasset delivers webhook notifications to the partner's configured endpoint as transactions and orders change state.
 
 ### Configuration
 
@@ -787,20 +959,33 @@ The webhook endpoint must:
 - Respond with `200 OK` within 10 seconds.
 - Be publicly accessible.
 
+### Event discrimination
+
+**Exactly one webhook is delivered per deposit.** The payload's `data.event` field tells you which kind it is.
+
+| Deposit kind | `data.event` value |
+|---|---|
+| Applied to an open order (became `PARTIALLY_PAID` or `PAID`) | `order.updated` |
+| Landed on an order whose TTL just passed | `order.updated` (status `EXPIRED`) |
+| Wrong asset for the order / no open order / order already terminal / sub-cent dust | `transaction.updated` |
+
+Branch on `data.event` to route the payload. Wallet-only partners will only ever see `transaction.updated` and can ignore the field.
+
 ### Event: `transaction.updated`
 
-Triggered when a transaction status changes.
+Fired for on-chain deposits that are not order-linked. This is the only event emitted in the wallet-only flow.
 
 **Payload**
 
 ```json
 {
   "data": {
+    "event": "transaction.updated",
     "userId": "09dc741e-f1dd-42a0-a681-af41fafc1dd8",
     "transactionHash": "0xadf77fgg745399fd9df7b70x8d7",
     "status": "COMPLETED",
     "amount": "100",
-    "currency": "USDT-ETH",
+    "currency": "USDT",
     "chain": "ETH",
     "timestamp": "2026-01-19T10:35:00.000Z"
   }
@@ -811,14 +996,66 @@ Triggered when a transaction status changes.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `data` | object | Webhook payload container |
+| `data.event` | string | Always `transaction.updated` |
 | `data.userId` | string | Internal `partnerUserId` (UUID) — see [User Identifiers](#user-identifiers) |
 | `data.transactionHash` | string | Blockchain transaction hash |
-| `data.status` | string | New transaction status |
-| `data.amount` | string | Transaction amount |
+| `data.status` | string | New transaction status: `PENDING`, `COMPLETED`, `FAILED` |
+| `data.amount` | string | Raw crypto amount received |
 | `data.currency` | string | Token/currency identifier |
 | `data.chain` | string | Blockchain network identifier |
 | `data.timestamp` | string | ISO 8601 emission timestamp |
+
+### Event: `order.updated`
+
+Fired when a deposit advances or terminates a payment order. Only emitted in the payment-order flow.
+
+**Payload**
+
+```json
+{
+  "data": {
+    "event": "order.updated",
+    "userId": "09dc741e-f1dd-42a0-a681-af41fafc1dd8",
+    "orderId": "7a1d6b8e-1c2f-4a9e-9b7d-9c8a1f2e3b4d",
+    "externalOrderRef": "INV-001",
+    "status": "PARTIALLY_PAID",
+    "fiatAmount": "50",
+    "fiatCurrency": "USD",
+    "paidSoFar": "20",
+    "remarks": "May subscription",
+    "lastTransaction": {
+      "transactionHash": "0xadf77fgg745399fd9df7b70x8d7",
+      "cryptoAmountReceived": "20.10",
+      "cryptoCurrency": "USDC",
+      "chain": "ETH",
+      "fiatAmountApplied": "20"
+    },
+    "timestamp": "2026-01-19T10:35:00.000Z"
+  }
+}
+```
+
+**Fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data.event` | string | Always `order.updated` |
+| `data.userId` | string | Internal `partnerUserId` (UUID) |
+| `data.orderId` | string | Fasset's order UUID |
+| `data.externalOrderRef` | string | Partner-supplied reference from `POST /orders` |
+| `data.status` | string | Order status — `PARTIALLY_PAID`, `PAID`, or `EXPIRED` (the three transitions a deposit can drive) |
+| `data.fiatAmount` | string | Order's fiat target |
+| `data.fiatCurrency` | string | Fiat currency |
+| `data.paidSoFar` | string | Cumulative fiat applied after this deposit |
+| `data.remarks` | string \| null | Partner memo passed at order creation |
+| `data.lastTransaction.transactionHash` | string | Blockchain hash of the deposit that triggered this event |
+| `data.lastTransaction.cryptoAmountReceived` | string | Raw on-chain amount |
+| `data.lastTransaction.cryptoCurrency` | string | E.g. `USDC` |
+| `data.lastTransaction.chain` | string | E.g. `ETH`, `SEPOLIA` |
+| `data.lastTransaction.fiatAmountApplied` | string | Fiat counted toward the order. Capped at the order's remaining balance (overpayment is recorded raw in `cryptoAmountReceived` but never inflates `fiatAmountApplied`). Absent when `status === 'EXPIRED'` (order died at deposit time — the deposit becomes free money). |
+| `data.timestamp` | string | ISO 8601 emission timestamp |
+
+**Migrating from the pre-order webhook:** if you previously processed `transaction.updated` for every deposit, switch on `data.event`. Order-linked deposits no longer fire `transaction.updated` — only `order.updated` is sent. The on-chain hash is still available, nested under `lastTransaction`.
 
 ### Retries
 
@@ -910,12 +1147,14 @@ PENDING → COMPLETED
 
 Fasset-specific guidance:
 
-- **Do not cache embed tokens.** They are one-time use and expire after 5 minutes. Always generate a fresh token per widget load.
+- **Mint a fresh embed token per widget session.** Tokens are valid for 30 minutes and may be re-sent to the widget on reload within that window, but do not persist them beyond the session.
+- **Branch on `data.event` when handling webhooks.** Partners using the payment-order flow MUST distinguish `order.updated` from `transaction.updated`; wallet-only partners can ignore the field.
+- **Use `data.transactionHash` (or `data.lastTransaction.transactionHash` for `order.updated`) as the idempotency key.** The same hash will never produce two distinct webhooks of the same event type, but retries on delivery failure can re-deliver.
+- **Treat orders as the source of truth for fiat amounts.** Raw on-chain amounts in `data.lastTransaction.cryptoAmountReceived` may include overpayment; `fiatAmountApplied` is what was actually counted against the order.
 - **Keep the Wallet Hash Secret Key server-side.** Never ship it to the browser or include it in client builds.
 - **Recompute the wallet hash on every widget load.** Wallets can change between sessions; a stale hash will cause the widget to fail verification.
-- **Use `data.transactionHash` as the idempotency key** when processing `transaction.updated` webhooks.
 - **Back off on `429` responses** using exponential backoff before retrying.
 
 ---
 
-**Last Updated:** April 21, 2026
+**Last Updated:** May 21, 2026
