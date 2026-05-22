@@ -9,6 +9,7 @@ This webapp validates the following in a single manual-testing dashboard:
 - Get partner user wallets (`GET /partners/get-partner-user-wallets`)
 - Get partner user transactions (`GET /transactions/get-partner-user-transactions`)
 - Generate embed token (`POST /partners/embed-token`)
+- Create and fetch payment orders (`POST /orders`, `GET /orders`)
 - Compute wallet hash (HMAC-SHA256)
 - Embed and configure widget via iframe + `postMessage`
 - Receive and inspect webhooks in the dashboard
@@ -20,7 +21,8 @@ This webapp validates the following in a single manual-testing dashboard:
 - `src/app/api/fasset/users/route.ts`: user create/list proxy.
 - `src/app/api/fasset/wallets/route.ts`: wallets proxy.
 - `src/app/api/fasset/transactions/route.ts`: transactions proxy.
-- `src/app/api/fasset/widget-session/route.ts`: token + wallet hash session endpoint.
+- `src/app/api/fasset/orders/route.ts`: payment order create/fetch proxy.
+- `src/app/api/fasset/widget-session/route.ts`: token + wallet hash session endpoint, with optional order binding.
 - `src/app/api/fasset/webhooks/route.ts`: webhook receiver and webhook list endpoint.
 - `src/lib/webhooks-store.ts`: local file-backed webhook store used by the dashboard.
 - `src/app/page.tsx`: manual testing dashboard + embedded widget.
@@ -58,16 +60,19 @@ Open `http://localhost:3000`.
 
 `POST /api/fasset/widget-session` does this server-side:
 
-1. Generates one-time embed token from Fasset.
+1. Generates an embed token from Fasset.
 2. Fetches user wallets from Fasset.
 3. Canonicalizes wallets and computes wallet hash using HMAC-SHA256.
-4. Returns `{ token, walletHash, widgetUrl, wallets }`.
+4. Optionally binds the token to an `orderId` when the widget should open in payment-order mode.
+5. Returns `{ token, walletHash, widgetUrl, wallets }`.
 
 The frontend:
 
 1. Loads iframe with `widgetUrl`.
 2. Waits for `WIDGET_READY` from widget origin.
 3. Sends `WIDGET_CONFIG` with `token`, `walletHash`, and `theme`.
+
+If you are using the payment-order flow, create or fetch the order first and pass its `id` as `orderId` when generating the widget session.
 
 ## Wallet Hash
 
@@ -84,12 +89,13 @@ see [API_REFERENCE.md → Step 2: Compute Wallet Hash](API_REFERENCE.md#step-2-c
 1. Create a user in the "Create Partner User" section.
 2. Fetch users and select one partner user.
 3. Fetch wallets and transactions.
-4. Generate widget session.
-5. Confirm event log shows:
+4. Optionally create or fetch a payment order, then load the widget with that order.
+5. Generate widget session.
+6. Confirm event log shows:
    - `Received message: WIDGET_READY`
    - `Sent WIDGET_CONFIG payload`
-6. Validate widget renders and displays user wallets.
-7. Send a webhook to `/api/fasset/webhooks` and confirm it appears in the Webhooks panel.
+7. Validate widget renders and displays user wallets.
+8. Send a webhook to `/api/fasset/webhooks` and confirm it appears in the Webhooks panel.
 
 ## Webhook Monitoring
 
@@ -129,10 +135,13 @@ ngrok http 3000
 - Raw webhook body preview
 - Auto-poll option for live monitoring
 - Manual webhook simulation for local testing
+- Latest webhook records, including event type for `transaction.updated` and `order.updated`
 
 ## Notes
 
 - API keys and wallet hash keys are never exposed to client code.
 - Error responses from Fasset are forwarded with original status codes where available.
-- Embed tokens are one-time use and short-lived; generate a new session per load.
+- Embed tokens are minted server-side, valid for 30 minutes, and can be re-sent to the widget on reload within that window.
+- Use `orderId` with embed token generation when you want the widget bound to a payment order.
+- For payment-order webhooks, branch on `data.event` and expect `order.updated` for order-linked deposits.
 - Webhooks are stored locally in `data/webhooks.json` for inspection in this example.
