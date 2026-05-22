@@ -31,13 +31,19 @@ export async function POST(request: NextRequest) {
     const walletHash = computeWalletHash(walletsResp.data.wallets, walletHashKey);
 
     const meta = {
-        requests: [
-          buildRequestRecord("/partners/embed-token", {
+      requests: [
+        {
+          ...buildRequestRecord("/partners/embed-token", {
             method: "POST",
             body: JSON.stringify({ partnerUserId: body.partnerUserId, ...(body.orderId ? { orderId: body.orderId } : {}), theme }),
           }),
-          buildRequestRecord(`/partners/get-partner-user-wallets?partnerUserId=${body.partnerUserId}`),
-        ],
+          response: tokenResp.data,
+        },
+        {
+          ...buildRequestRecord(`/partners/get-partner-user-wallets?partnerUserId=${body.partnerUserId}`),
+          response: walletsResp.data,
+        },
+      ],
     };
 
     return NextResponse.json(

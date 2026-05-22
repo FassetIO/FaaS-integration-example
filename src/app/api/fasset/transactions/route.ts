@@ -32,12 +32,14 @@ export async function GET(request: NextRequest) {
       params.set("toDate", toDate);
     }
 
+    const { meta: _ignored, ...body } = result;
     const meta = {
       ...result.meta,
-      request: buildRequestRecord(`/transactions/get-partner-user-transactions?${params.toString()}`),
+      request: {
+        ...buildRequestRecord(`/transactions/get-partner-user-transactions?${params.toString()}`),
+        response: body,
+      },
     };
-
-    const { meta: _ignored, ...body } = result;
     return NextResponse.json(body, { headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

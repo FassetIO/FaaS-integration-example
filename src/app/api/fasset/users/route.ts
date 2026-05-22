@@ -12,12 +12,14 @@ export async function GET(request: NextRequest) {
     const pageSize = Number(request.nextUrl.searchParams.get("pageSize") ?? "20");
 
     const result = await getPartnerUsers(page, pageSize);
+    const { meta: _ignored, ...body } = result;
     const meta = {
       ...result.meta,
-      request: buildRequestRecord(`/partners/get-partner-users?page=${page}&pageSize=${pageSize}`),
+      request: {
+        ...buildRequestRecord(`/partners/get-partner-users?page=${page}&pageSize=${pageSize}`),
+        response: body,
+      },
     };
-
-    const { meta: _ignored, ...body } = result;
     return NextResponse.json(body, { headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -45,18 +47,20 @@ export async function POST(request: NextRequest) {
       metadata: body.metadata,
     });
 
+    const { meta: _ignored, ...responseBody } = result;
     const meta = {
       ...result.meta,
-      request: buildRequestRecord("/partners/create-user", {
-        method: "POST",
-        body: JSON.stringify({
-          userIdFromPartner: body.userIdFromPartner,
-          metadata: body.metadata,
+      request: {
+        ...buildRequestRecord("/partners/create-user", {
+          method: "POST",
+          body: JSON.stringify({
+            userIdFromPartner: body.userIdFromPartner,
+            metadata: body.metadata,
+          }),
         }),
-      }),
+        response: responseBody,
+      },
     };
-
-    const { meta: _ignored, ...responseBody } = result;
     return NextResponse.json(responseBody, { status: 201, headers: { "x-fasset-meta": JSON.stringify(meta) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

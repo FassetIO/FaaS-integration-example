@@ -75,12 +75,9 @@ export function getFassetConfig() {
 export function buildRequestRecord(path: string, init?: RequestInit): RequestRecord {
   const { baseUrl } = getFassetConfig();
 
-  const fullUrl = `${baseUrl}${path}`;
-  const displayUrl = fullUrl.replace(baseUrl, "{fasset-api}");
-
   return {
     method: (init?.method ?? "GET").toUpperCase(),
-    url: displayUrl,
+    url: `${path}`,
     body: typeof init?.body === "string" ? init.body : null,
   };
 }
@@ -179,7 +176,7 @@ export type OrderOutput = {
 };
 
 export async function createOrder(input: CreateOrderInput) {
-  return requestFasset<{ order: OrderOutput }>("/orders", {
+  return requestFasset<OrderOutput>("/orders", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -190,7 +187,7 @@ export async function getOrder(options: { orderId?: string; externalOrderRef?: s
   if (options.orderId) params.set("orderId", options.orderId);
   if (options.externalOrderRef) params.set("externalOrderRef", options.externalOrderRef);
 
-  return requestFasset<{ order: OrderOutput }>(`/orders?${params.toString()}`);
+  return requestFasset<OrderOutput>(`/orders?${params.toString()}`);
 }
 
 export async function getPartnerUserWallets(partnerUserId: string) {
