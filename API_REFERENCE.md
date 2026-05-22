@@ -478,17 +478,15 @@ The order endpoints power the payment-order flow. Skip this section if you only 
 NOT_PAID ──deposit────► PARTIALLY_PAID ──deposit────► PAID
    │                          │
    └── expiresAt passed ──────┴── EXPIRED
-   └── new order ─────────────── SUPERSEDED
 ```
 
 - `NOT_PAID` — open, no funds applied yet.
 - `PARTIALLY_PAID` — open, at least one deposit applied but target not yet met.
 - `PAID` — target met. Terminal.
 - `EXPIRED` — `expiresAt` passed before the order was fully paid. Only applies to orders that were created with an `expiresAt`. Terminal.
-- `SUPERSEDED` — a newer order replaced this one for the same user. Terminal.
 - `CANCELLED` — reserved for future partner-driven cancellation. Terminal.
 
-`PAID`, `EXPIRED`, `SUPERSEDED`, and `CANCELLED` are terminal — orders never leave a terminal state.
+`PAID`, `EXPIRED`, and `CANCELLED` are terminal — orders never leave a terminal state.
 
 Orders have no expiry by default — they stay open until paid, superseded, or cancelled. Partners can opt into an expiry by passing `expiresAt` at creation.
 
@@ -514,10 +512,10 @@ Creates a new payment order for a user, or returns the existing open order if `e
 | Existing state for `partnerUserId` | Behavior |
 |---|---|
 | No open order | New order created |
-| Open order, same `externalOrderRef` | Existing order returned unchanged |
-| Open order, different `externalOrderRef`, `paidSoFar = 0` | Old order flipped to `SUPERSEDED`, new one created |
-| Open order, different `externalOrderRef`, `paidSoFar > 0` | **409 Conflict.** A partial payment cannot be silently discarded — either resume with the original `externalOrderRef`, or wait for the order to be paid / to expire. |
+| Open order (any state, any `externalOrderRef`) | Existing order returned unchanged. The incoming `fiatAmount`, `externalOrderRef`, `expiresAt`, and `remarks` are ignored. |
 | Open order whose `expiresAt` has passed | Old order flipped to `EXPIRED`, new one created |
+
+> Only one open order can exist per user at a time. To start a different order, wait for the current one to be paid, expire, or be cancelled.
 
 **Example**
 
@@ -571,7 +569,6 @@ curl -X POST https://dev-faas.fasset.tech/faas-service/api/v1/orders \
 |--------|---------|
 | 400 | `expiresAt must be a future timestamp` |
 | 400 | Validation failures on required fields |
-| 409 | `User has an open order ({externalOrderRef}) with a partial payment...` — sent when the user has a `PARTIALLY_PAID` order and the partner tries to create a different one. |
 
 ---
 
@@ -961,18 +958,6 @@ The webhook endpoint must:
 - Respond with `200 OK` within 10 seconds.
 - Be publicly accessible.
 
-### Event discrimination
-
-**Exactly one webhook is delivered per deposit.** The payload's `data.event` field tells you which kind it is.
-
-| Deposit kind | `data.event` value |
-|---|---|
-| Applied to an open order (became `PARTIALLY_PAID` or `PAID`) | `order.updated` |
-| Landed on an order whose TTL just passed | `order.updated` (status `EXPIRED`) |
-| Wrong asset for the order / no open order / order already terminal / sub-cent dust | `transaction.updated` |
-
-Branch on `data.event` to route the payload. Wallet-only partners will only ever see `transaction.updated` and can ignore the field.
-
 ### Event: `transaction.updated`
 
 Fired for on-chain deposits that are not order-linked. This is the only event emitted in the wallet-only flow.
@@ -1027,6 +1012,7 @@ Fired when a deposit advances or terminates a payment order. Only emitted in the
     "remarks": "May subscription",
     "lastTransaction": {
       "transactionHash": "0xadf77fgg745399fd9df7b70x8d7",
+      "status": "COMPLETED",
       "cryptoAmountReceived": "20.10",
       "cryptoCurrency": "USDC",
       "chain": "ETH",
@@ -1051,10 +1037,11 @@ Fired when a deposit advances or terminates a payment order. Only emitted in the
 | `data.paidSoFar` | string | Cumulative fiat applied after this deposit |
 | `data.remarks` | string \| null | Partner memo passed at order creation |
 | `data.lastTransaction.transactionHash` | string | Blockchain hash of the deposit that triggered this event |
+| `data.lastTransaction.status` | string | The deposit's on-chain status: `PENDING`, `COMPLETED`, or `FAILED`. PENDING events fire before funds clear; COMPLETED is when `paidSoFar` actually advances. |
 | `data.lastTransaction.cryptoAmountReceived` | string | Raw on-chain amount |
 | `data.lastTransaction.cryptoCurrency` | string | E.g. `USDC` |
 | `data.lastTransaction.chain` | string | E.g. `ETH`, `SEPOLIA` |
-| `data.lastTransaction.fiatAmountApplied` | string | Fiat counted toward the order. Capped at the order's remaining balance (overpayment is recorded raw in `cryptoAmountReceived` but never inflates `fiatAmountApplied`). Absent when `status === 'EXPIRED'` (order died at deposit time — the deposit becomes free money). |
+| `data.lastTransaction.fiatAmountApplied` | string | Fiat counted toward the order. Capped at the order's remaining balance (overpayment is recorded raw in `cryptoAmountReceived` but never inflates `fiatAmountApplied`). **Only present on COMPLETED-and-applied deposits.** Absent on PENDING (funds not yet credited) and on the EXPIRED-at-deposit-time case (order died, deposit becomes free money). |
 | `data.timestamp` | string | ISO 8601 emission timestamp |
 
 **Migrating from the pre-order webhook:** if you previously processed `transaction.updated` for every deposit, switch on `data.event`. Order-linked deposits no longer fire `transaction.updated` — only `order.updated` is sent. The on-chain hash is still available, nested under `lastTransaction`.
