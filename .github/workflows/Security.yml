@@ -27,6 +27,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: FassetIO/security-ci@aaa60702fb4cb298115ed4e5d52aae4233eb26e5 #v1.0.1
+      - uses: FassetIO/security-ci@v1
         with:
           defectdojo-api-key: ${{secrets.DEFECTDOJOAPIKEY}}
